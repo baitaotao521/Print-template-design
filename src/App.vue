@@ -1,11 +1,17 @@
 <script setup>
-import Form from './components/Form.vue'
+import FieldInfoViewer from './components/FieldInfoViewer.vue'
 </script>
 
 <template>
   <main>
-    <h4>编辑 <code>src/App.vue</code> 并保存以重新加载</h4>
-    <Form />
+    <el-tabs>
+      <el-tab-pane label="字段信息">
+        <FieldInfoViewer />
+      </el-tab-pane>
+      <el-tab-pane label="打印模板">
+        <hiprintViewer />
+      </el-tab-pane>
+    </el-tabs>
   </main>
 </template>
 
