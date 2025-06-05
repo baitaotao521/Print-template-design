@@ -9,9 +9,12 @@ import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
 import PrintDataSelector from './PrintDataSelector.vue';
+import FieldInfoViewer from './FieldInfoViewer.vue';
+import TemplateManager from './TemplateManager.vue';
 import $ from 'jquery';
-import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput } from 'element-plus';
+import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { saveTemplate, getTemplate, getAllTemplates, deleteTemplate } from '@/utils/indexedDBHelper';
 
 // 声明全局变量类型
 declare global {
@@ -44,6 +47,11 @@ const customPaperForm = ref({
   height: 150
 });
 
+// 在 script setup 中添加新的响应式变量
+const templateList = ref([]);
+const currentTemplateId = ref('');
+const templateName = ref('');
+
 onMounted(async () => {
   try {
     isLoading.value = true;
@@ -60,6 +68,9 @@ onMounted(async () => {
     
     // 检查是否有从模板设计页面返回的模板数据
     await checkSavedTemplate();
+    
+    // 加载模板列表
+    await loadTemplateList();
     
     isLoading.value = false;
     message.value = '';
@@ -559,6 +570,127 @@ function handleMessageFromDesigner(event) {
     ElMessage.error('处理模板设计页面消息失败: ' + (error.message || String(error)));
   }
 }
+
+// 保存当前模板到 IndexedDB
+async function saveCurrentTemplate() {
+  try {
+    if (!templateName.value) {
+      ElMessage.warning('请输入模板名称');
+      return;
+    }
+    
+    // 获取模板JSON数据
+    const json = hiprintTemplate.getJson();
+    
+    // 序列化处理，确保数据可以被正确存储
+    const serializedJson = JSON.parse(JSON.stringify(json));
+    
+    // 保存模板，传入模板名称作为描述
+    await saveTemplate(templateName.value, serializedJson, templateName.value);
+    
+    ElMessage.success('模板已保存到本地数据库');
+    await loadTemplateList(); // 重新加载模板列表
+  } catch (error) {
+    console.error('保存模板失败:', error);
+    ElMessage.error('保存模板失败: ' + (error.message || String(error)));
+  }
+}
+
+// 加载模板列表
+async function loadTemplateList() {
+  try {
+    const templates = await getAllTemplates();
+    templateList.value = templates;
+  } catch (error) {
+    console.error('加载模板列表失败:', error);
+    ElMessage.error('加载模板列表失败: ' + (error.message || String(error)));
+  }
+}
+
+// 加载指定模板
+async function loadTemplate(id) {
+  try {
+    const template = await getTemplate(id);
+    if (template && template.data) {
+      importTemplate(template.data);
+      currentTemplateId.value = id;
+      templateName.value = template.description || id; // 使用描述作为模板名称
+      ElMessage.success('模板已从本地数据库加载');
+    } else {
+      ElMessage.warning('未找到指定模板');
+    }
+  } catch (error) {
+    console.error('加载模板失败:', error);
+    ElMessage.error('加载模板失败: ' + (error.message || String(error)));
+  }
+}
+
+// 删除模板
+async function removeTemplate(id) {
+  try {
+    await ElMessageBox.confirm('确定要删除这个模板吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    
+    await deleteTemplate(id);
+    ElMessage.success('模板已删除');
+    await loadTemplateList(); // 重新加载模板列表
+    
+    // 如果删除的是当前模板，清空当前模板
+    if (currentTemplateId.value === id) {
+      currentTemplateId.value = '';
+      templateName.value = '';
+      // 清空设计器
+      $("#hiprint-printTemplate").empty();
+      hiprintTemplate.design("#hiprint-printTemplate", { grid: true });
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除模板失败:', error);
+      ElMessage.error('删除模板失败: ' + (error.message || String(error)));
+    }
+  }
+}
+
+// 添加处理下拉菜单命令的方法
+function handleTemplateCommand(command) {
+  switch (command) {
+    case 'export':
+      exportTemplateJSON();
+      break;
+    case 'import':
+      handleImportTemplate();
+      break;
+    case 'paste':
+      importTemplateFromJson();
+      break;
+    default:
+      break;
+  }
+}
+
+// 恢复处理从模板管理器加载模板的方法
+function handleLoadTemplateFromManager(templateData) {
+  try {
+    if (!templateData) {
+      ElMessage.warning('模板数据为空');
+      return;
+    }
+    
+    // 切换到设计标签页
+    activeTab.value = 'design';
+    
+    // 导入模板
+    importTemplate(templateData);
+    
+    ElMessage.success('模板已成功加载到设计器');
+  } catch (error) {
+    console.error('加载模板失败:', error);
+    ElMessage.error('加载模板失败: ' + (error.message || String(error)));
+  }
+}
 </script>
 
 <template>
@@ -579,21 +711,46 @@ function handleMessageFromDesigner(event) {
             <!-- 中间：存放元素面板的容器 -->
             <div class="template-wrapper">
               <div class="template-actions">
-                <el-button type="primary" size="small" @click="exportTemplateJSON">导出JSON</el-button>
-                <el-button type="primary" size="small" @click="handleImportTemplate">导入文件</el-button>
-                <el-button type="primary" size="small" @click="importTemplateFromJson">粘贴JSON</el-button>
-                <el-button type="info" size="small" @click="goToTemplateDesigner">独立设计器</el-button>
-                <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
-                  <el-option
-                    v-for="item in paperSizeOptions"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value"
+                <!-- 左侧：模板操作按钮组 -->
+                <div class="action-group">
+                  <el-input
+                    v-model="templateName"
+                    placeholder="输入模板名称"
+                    style="width: 150px; margin-right: 10px;"
                   />
-                </el-select>
-                <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
-                <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
+                  <el-button type="primary" size="small" @click="saveCurrentTemplate">保存模板</el-button>
+                  
+                  <!-- 使用下拉菜单替换原来的多个按钮 -->
+                  <el-dropdown @command="handleTemplateCommand" trigger="click">
+                    <el-button type="primary" size="small">
+                      模板操作<i class="el-icon-arrow-down el-icon--right"></i>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="export">导出JSON</el-dropdown-item>
+                        <el-dropdown-item command="import">导入文件</el-dropdown-item>
+                        <el-dropdown-item command="paste">粘贴JSON</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+                
+                <!-- 右侧：纸张和打印操作按钮组 -->
+                <div class="action-group">
+                  <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
+                    <el-option
+                      v-for="item in paperSizeOptions"
+                      :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
+                    />
+                  </el-select>
+                  <el-button type="info" size="small" @click="goToTemplateDesigner">独立设计器</el-button>
+                  <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
+                  <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
+                </div>
               </div>
+              
               <div id="hiprint-printTemplate" class="template-container"></div>
             </div>
             
@@ -611,9 +768,17 @@ function handleMessageFromDesigner(event) {
           />
         </el-tab-pane>
 
+        <!-- 恢复模板管理标签页 -->
+        <el-tab-pane label="模板管理" name="template-manager">
+          <TemplateManager 
+            :hiprintTemplate="hiprintTemplate"
+            @load-template="handleLoadTemplateFromManager"
+          />
+        </el-tab-pane>
+
         <el-tab-pane label="字段信息">
-        <FieldInfoViewer />
-      </el-tab-pane>
+          <FieldInfoViewer />
+        </el-tab-pane>
       </el-tabs>
     </div>
     
@@ -737,8 +902,14 @@ function handleMessageFromDesigner(event) {
   border: 1px solid #dcdfe6;
   border-radius: 4px 4px 0 0;
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .template-container {
@@ -894,5 +1065,20 @@ function handleMessageFromDesigner(event) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 添加模板列表样式 */
+.template-list {
+  margin: 10px 0;
+  padding: 10px;
+  background-color: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+
+.template-list h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #606266;
 }
 </style>
