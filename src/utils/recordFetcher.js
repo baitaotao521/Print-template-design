@@ -18,9 +18,10 @@ async function retry(fn, retries = 3, delay = 1000) {
  * @param {string} viewId - 视图ID
  * @param {string} [recordId] - 记录ID，如果为空则获取所有记录
  * @param {boolean} [shouldFormat=false] - 是否返回格式化后的值
+ * @param {function} [onBatchLoaded] - 每批数据加载完成时的回调函数，参数为已加载的记录
  * @returns {Promise<Array<{recordId: string, field: Array<{name: string, value: any, type: number, field: string}>}>>}
  */
-export async function fetchRecordsAndValues(tableId, viewId, recordId = null, shouldFormat = false) {
+export async function fetchRecordsAndValues(tableId, viewId, recordId = null, shouldFormat = false, onBatchLoaded = null) {
   try {
     // 获取当前表格
     const table = await bitable.base.getTableById(tableId);
@@ -70,24 +71,29 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
           });
         }
       }
-      console.log('获取的记录为',  [{
-        recordId,
-        field: fieldValues
-      }])
-      return [{
+      const result = [{
         recordId,
         field: fieldValues
       }];
+      
+      // 调用回调函数
+      if (onBatchLoaded && typeof onBatchLoaded === 'function') {
+        onBatchLoaded(result);
+      }
+      
+      return result;
     }
 
     // 获取所有记录
     const records = [];
     let pageToken = null;
     let hasMore = true;
+    let batchCount = 0;
     
     while (hasMore) {
+      batchCount++;
       const response = await table.getRecords({
-        pageSize: 5000,
+        pageSize: 200,
         pageToken,
         viewId
       });
@@ -127,10 +133,6 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
               });
             }
           }
-          console.log('获取的记录为',  [{
-            recordId: record.recordId,
-            field: fieldValues
-          }])
           return {
             recordId: record.recordId,
             field: fieldValues
@@ -143,7 +145,13 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
 
       // 并行处理所有记录
       const newRecords = await Promise.all(recordPromises);
-      records.push(...newRecords.filter(Boolean));
+      const validRecords = newRecords.filter(Boolean);
+      records.push(...validRecords);
+      
+      // 调用回调函数，返回当前批次的数据
+      if (onBatchLoaded && typeof onBatchLoaded === 'function') {
+        onBatchLoaded(records.slice(), batchCount, !nextPageToken);
+      }
       
       // 检查是否还有更多记录
       hasMore = !!nextPageToken;

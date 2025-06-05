@@ -31,6 +31,10 @@ const activeTab = ref('design');
 let hiprintTemplate: any = null;
 let isLoading = ref(true);
 
+// 添加一个新的状态变量来跟踪记录加载状态
+const isLoadingRecords = ref(false);
+const recordsLoadingMessage = ref('');
+
 // 添加纸张大小选项
 const paperSizeOptions = ref([
   { label: 'A4', value: 'A4', width: 210, height: 297 },
@@ -55,25 +59,36 @@ const templateName = ref('');
 onMounted(async () => {
   try {
     isLoading.value = true;
-    message.value = '正在加载字段和数据...';
+    message.value = '正在初始化...';
     
     // 添加消息监听器，接收从模板设计页面发送回来的数据
     window.addEventListener('message', handleMessageFromDesigner);
     
-    // 先获取字段和数据
-    await loadFieldsAndData();
+    // 先获取字段信息
+    message.value = '正在加载字段信息...';
+    await loadFields();
     
     // 然后一次性初始化打印组件
+    message.value = '正在初始化打印组件...';
     await initHiprint();
     
     // 检查是否有从模板设计页面返回的模板数据
-    await checkSavedTemplate();
+    const hasTemplateFromDesigner = await checkSavedTemplate();
+    
+    // 如果没有从设计器返回的模板，尝试加载默认模板
+    if (!hasTemplateFromDesigner) {
+      message.value = '正在加载默认模板...';
+      await loadDefaultTemplate();
+    }
     
     // 加载模板列表
     await loadTemplateList();
     
     isLoading.value = false;
     message.value = '';
+    
+    // 懒加载记录数据
+    loadRecordsAsync();
   } catch (err) {
     console.error('初始化失败:', err);
     message.value = '初始化失败: ' + (err.message || String(err));
@@ -81,8 +96,8 @@ onMounted(async () => {
   }
 });
 
-// 加载字段和记录数据
-async function loadFieldsAndData() {
+// 分离加载字段和记录的方法
+async function loadFields() {
   try {
     const table = await bitable.base.getActiveTable();
     const view = await table.getActiveView();
@@ -92,35 +107,89 @@ async function loadFieldsAndData() {
     // 获取字段信息
     fields.value = await fetchAllFields(tableId, viewId);
     
-    // 获取记录数据
-    const records = await fetchRecordsAndValues(tableId, viewId, null, true);
-    
-    // 转换记录格式，将字段值组织成对象
-    recordsData.value = records.map(record => {
-      const recordData = { recordId: record.recordId, field: record.field };
-      if (record.field) {
-        record.field.forEach(item => {
-          recordData[item.field] = item.value;
-        });
-      }
-      return recordData;
-    });
-    
-    // 获取第一条记录作为测试数据
-    const testData = records.length > 0 ? records[0] : null;
-    
-    // 生成测试数据对象，将从第一条记录获取的字段值组织成对象
-    window.fieldTestData = {};
-    if (testData && testData.field) {
-      testData.field.forEach(item => {
-        window.fieldTestData[item.field] = item.value;
-      });
-    }
-    
-    return { fields: fields.value, testData, records: recordsData.value };
+    return { fields: fields.value, tableId, viewId };
   } catch (err) {
     console.error('获取字段失败:', err);
-    message.value = '获取字段失败: ' + (err.message || String(err));
+    throw err;
+  }
+}
+
+// 异步加载记录数据
+async function loadRecordsAsync() {
+  try {
+    isLoadingRecords.value = true;
+    recordsLoadingMessage.value = '正在加载记录数据，这可能需要一些时间...';
+    
+    const table = await bitable.base.getActiveTable();
+    const view = await table.getActiveView();
+    const tableId = table.id;
+    const viewId = view.id;
+    
+    // 使用回调函数，在每批数据加载完成时更新界面
+    await fetchRecordsAndValues(
+      tableId, 
+      viewId, 
+      null, 
+      true, 
+      (loadedRecords, batchCount, isComplete) => {
+        // 更新记录数据
+        recordsData.value = loadedRecords.map(record => {
+          const recordData = { recordId: record.recordId, field: record.field };
+          if (record.field) {
+            record.field.forEach(item => {
+              recordData[item.field] = item.value;
+            });
+          }
+          return recordData;
+        });
+        
+        // 更新测试数据（使用第一条记录）
+        if (loadedRecords.length > 0) {
+          const testData = loadedRecords[0];
+          window.fieldTestData = {};
+          if (testData && testData.field) {
+            testData.field.forEach(item => {
+              window.fieldTestData[item.field] = item.value;
+            });
+          }
+        }
+        
+        // 更新加载提示
+        if (isComplete) {
+          recordsLoadingMessage.value = `已成功加载 ${loadedRecords.length} 条记录`;
+          setTimeout(() => {
+            recordsLoadingMessage.value = '';
+          }, 3000);
+        } else {
+          recordsLoadingMessage.value = `已加载 ${loadedRecords.length} 条记录，正在继续加载...（批次 ${batchCount}）`;
+        }
+      }
+    );
+  } catch (err) {
+    console.error('获取记录失败:', err);
+    recordsLoadingMessage.value = '获取记录失败: ' + (err.message || String(err));
+    setTimeout(() => {
+      recordsLoadingMessage.value = '';
+    }, 5000);
+  } finally {
+    isLoadingRecords.value = false;
+  }
+}
+
+// 修改原来的 loadFieldsAndData 方法
+async function loadFieldsAndData() {
+  try {
+    // 先加载字段
+    const { fields: loadedFields } = await loadFields();
+    
+    // 如果记录数据还没有加载，显示加载中的提示
+    if (recordsData.value.length === 0) {
+      recordsLoadingMessage.value = '记录数据正在加载中，请稍候...';
+    }
+    
+    return { fields: loadedFields, testData: window.fieldTestData || {}, records: recordsData.value };
+  } catch (err) {
+    console.error('获取数据失败:', err);
     throw err;
   }
 }
@@ -268,6 +337,23 @@ function handlePaperSizeChange(value) {
   }
 }
 
+// 处理下拉菜单命令的方法
+function handleTemplateCommand(command) {
+  switch (command) {
+    case 'export':
+      exportTemplateJSON();
+      break;
+    case 'import':
+      handleImportTemplate();
+      break;
+    case 'paste':
+      importTemplateFromJson();
+      break;
+    default:
+      break;
+  }
+}
+
 // 用户点击导入模板按钮
 function handleImportTemplate() {
   // 创建文件输入元素
@@ -280,17 +366,24 @@ function handleImportTemplate() {
   // 监听文件选择事件
   fileInput.addEventListener('change', (event) => {
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+      document.body.removeChild(fileInput);
+      return;
+    }
     
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const jsonData = JSON.parse(e.target.result);
         importTemplate(jsonData);
+        ElMessage.success('模板导入成功');
       } catch (error) {
         console.error('解析JSON失败:', error);
         ElMessage.error('无效的模板文件');
       }
+    };
+    reader.onerror = () => {
+      ElMessage.error('读取文件失败');
     };
     reader.readAsText(file);
     
@@ -515,7 +608,7 @@ async function checkSavedTemplate() {
       
       if (!storedData) {
         console.log('没有找到保存的模板数据');
-        resolve();
+        resolve(false);
         return;
       }
       
@@ -534,17 +627,19 @@ async function checkSavedTemplate() {
           console.log('已删除保存的模板数据');
           
           ElMessage.success('已成功导入模板设计器中保存的模板');
+          resolve(true);
         } else {
           console.warn('保存的模板数据不完整');
+          resolve(false);
         }
       } catch (parseError) {
         console.error('解析保存的模板数据失败:', parseError);
         ElMessage.error('解析保存的模板数据失败: ' + (parseError.message || String(parseError)));
+        resolve(false);
       }
     } catch (error) {
       console.error('检查保存的模板失败:', error);
-    } finally {
-      resolve();
+      resolve(false);
     }
   });
 }
@@ -654,23 +749,6 @@ async function removeTemplate(id) {
   }
 }
 
-// 添加处理下拉菜单命令的方法
-function handleTemplateCommand(command) {
-  switch (command) {
-    case 'export':
-      exportTemplateJSON();
-      break;
-    case 'import':
-      handleImportTemplate();
-      break;
-    case 'paste':
-      importTemplateFromJson();
-      break;
-    default:
-      break;
-  }
-}
-
 // 恢复处理从模板管理器加载模板的方法
 function handleLoadTemplateFromManager(templateData) {
   try {
@@ -691,11 +769,62 @@ function handleLoadTemplateFromManager(templateData) {
     ElMessage.error('加载模板失败: ' + (error.message || String(error)));
   }
 }
+
+// 添加加载默认模板的方法
+async function loadDefaultTemplate() {
+  try {
+    // 检查当前模板是否已有数据
+    const currentTemplateData = hiprintTemplate.getJson();
+    const hasExistingTemplate = currentTemplateData && 
+                               Object.keys(currentTemplateData).length > 0 && 
+                               (currentTemplateData.printElements || []).length > 0;
+    
+    if (hasExistingTemplate) {
+      console.log('已有模板数据，不需要加载默认模板');
+      return;
+    }
+    
+    // 尝试从数据库加载第一个模板
+    const templates = await getAllTemplates();
+    
+    if (templates && templates.length > 0) {
+      // 使用第一个模板
+      const firstTemplate = templates[0];
+      console.log(`从数据库加载模板: ${firstTemplate.id}`);
+      importTemplate(firstTemplate.data);
+      currentTemplateId.value = firstTemplate.id;
+      templateName.value = firstTemplate.description || firstTemplate.id;
+      ElMessage.success(`已自动加载模板: ${firstTemplate.id}`);
+      return;
+    }
+    
+    // 如果没有保存的模板，使用默认模板
+    console.log('数据库中没有模板，使用默认空白模板');
+    // 这里可以添加默认模板的配置
+    const defaultTemplate = {
+      width: 210,
+      height: 297,
+      paperHeader: 0,
+      paperFooter: 0,
+      printElements: []
+    };
+    
+    // 导入默认模板
+    hiprintTemplate.clear();
+    hiprintTemplate.setPaper("A4");
+    hiprintTemplate.design("#hiprint-printTemplate", { grid: true });
+    
+  } catch (error) {
+    console.error('加载默认模板失败:', error);
+    // 失败时不显示错误消息，静默失败
+  }
+}
 </script>
 
 <template>
   <div class="hiprint-viewer">
     <div v-if="message" class="message">{{ message }}</div>
+    <div v-if="recordsLoadingMessage" class="records-loading-message">{{ recordsLoadingMessage }}</div>
     <div v-if="isLoading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <div class="loading-text">加载中...</div>
@@ -728,8 +857,7 @@ function handleLoadTemplateFromManager(templateData) {
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="export">导出JSON</el-dropdown-item>
-                        <el-dropdown-item command="import">导入文件</el-dropdown-item>
-                        <el-dropdown-item command="paste">粘贴JSON</el-dropdown-item>
+                        <el-dropdown-item command="import">导入模板</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -1080,5 +1208,17 @@ function handleLoadTemplateFromManager(templateData) {
   margin: 0 0 10px 0;
   font-size: 14px;
   color: #606266;
+}
+
+.records-loading-message {
+  background-color: #f0f9eb;
+  color: #67c23a;
+  padding: 8px 16px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

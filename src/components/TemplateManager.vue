@@ -189,20 +189,61 @@ function exportAllTemplates() {
 
 // 打开导入对话框
 function openImportDialog() {
-  importJsonText.value = '';
-  importDialogVisible.value = true;
-}
-
-// 导入模板JSON
-async function importTemplatesFromJson() {
-  try {
-    if (!importJsonText.value) {
-      ElMessage.warning('请输入JSON数据');
+  // 创建文件输入元素
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'application/json';
+  fileInput.style.display = 'none';
+  document.body.appendChild(fileInput);
+  
+  // 监听文件选择事件
+  fileInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      document.body.removeChild(fileInput);
       return;
     }
     
-    const jsonData = JSON.parse(importJsonText.value);
-    
+    try {
+      // 读取文件内容
+      const jsonData = await readJsonFile(file);
+      
+      // 导入模板
+      await importTemplatesFromJson(jsonData);
+      
+    } catch (error) {
+      console.error('导入模板失败:', error);
+      ElMessage.error('导入模板失败: ' + (error.message || String(error)));
+    } finally {
+      // 清理DOM
+      document.body.removeChild(fileInput);
+    }
+  });
+  
+  // 触发文件选择对话框
+  fileInput.click();
+}
+
+// 读取JSON文件
+function readJsonFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target.result);
+        resolve(jsonData);
+      } catch (error) {
+        reject(new Error('无效的JSON文件'));
+      }
+    };
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.readAsText(file);
+  });
+}
+
+// 导入模板JSON
+async function importTemplatesFromJson(jsonData) {
+  try {
     // 判断是单个模板还是多个模板
     if (typeof jsonData === 'object' && !Array.isArray(jsonData)) {
       // 如果是对象，可能是多个模板或单个模板
@@ -214,14 +255,18 @@ async function importTemplatesFromJson() {
           inputPattern: /.+/,
           inputErrorMessage: '模板名称不能为空'
         }).then(async ({ value }) => {
-          await saveTemplate(value, jsonData);
+          // 序列化处理
+          const serializedData = JSON.parse(JSON.stringify(jsonData));
+          await saveTemplate(value, serializedData, value);
           ElMessage.success('模板导入成功');
         });
       } else {
         // 多个模板
         let count = 0;
         for (const [name, data] of Object.entries(jsonData)) {
-          await saveTemplate(name, data);
+          // 序列化处理
+          const serializedData = JSON.parse(JSON.stringify(data));
+          await saveTemplate(name, serializedData, name);
           count++;
         }
         ElMessage.success(`成功导入 ${count} 个模板`);
@@ -231,11 +276,13 @@ async function importTemplatesFromJson() {
       return;
     }
     
-    importDialogVisible.value = false;
+    // 重新加载模板列表
     await loadTemplates();
   } catch (error) {
-    console.error('导入模板失败:', error);
-    ElMessage.error('导入模板失败: ' + (error.message || String(error)));
+    if (error !== 'cancel') {
+      console.error('导入模板失败:', error);
+      ElMessage.error('导入模板失败: ' + (error.message || String(error)));
+    }
   }
 }
 
@@ -336,26 +383,6 @@ onMounted(() => {
         <span class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" @click="saveTemplateData">确认</el-button>
-        </span>
-      </template>
-    </el-dialog>
-
-    <!-- 导入模板对话框 -->
-    <el-dialog
-      v-model="importDialogVisible"
-      title="导入模板"
-      width="600px"
-    >
-      <el-input
-        v-model="importJsonText"
-        type="textarea"
-        :rows="10"
-        placeholder="请粘贴模板JSON数据"
-      />
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="importDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="importTemplatesFromJson">导入</el-button>
         </span>
       </template>
     </el-dialog>
