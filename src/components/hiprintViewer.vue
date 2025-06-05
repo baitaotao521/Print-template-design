@@ -3,14 +3,15 @@ import { ref, onMounted } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
-import { fetchVisibleFields } from '@/utils/fieldFetcher';
+import { fetchAllFields } from '@/utils/fieldFetcher';
 // @ts-ignore
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
 import PrintDataSelector from './PrintDataSelector.vue';
 import $ from 'jquery';
-import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane } from 'element-plus';
+import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput } from 'element-plus';
+import { useRouter } from 'vue-router';
 
 // 声明全局变量类型
 declare global {
@@ -19,22 +20,46 @@ declare global {
   }
 }
 
+const router = useRouter();
 const message = ref('');
 const fields = ref([]);
+const recordsData = ref([]);
 const activeTab = ref('design');
 let hiprintTemplate: any = null;
 let isLoading = ref(true);
+
+// 添加纸张大小选项
+const paperSizeOptions = ref([
+  { label: 'A4', value: 'A4', width: 210, height: 297 },
+  { label: 'A5', value: 'A5', width: 148, height: 210 },
+  { label: 'B5', value: 'B5', width: 176, height: 250 },
+  { label: '自定义', value: 'custom', width: 100, height: 150 }
+]);
+const selectedPaperSize = ref('A4');
+
+// 自定义纸张对话框
+const customPaperDialogVisible = ref(false);
+const customPaperForm = ref({
+  width: 100,
+  height: 150
+});
 
 onMounted(async () => {
   try {
     isLoading.value = true;
     message.value = '正在加载字段和数据...';
     
+    // 添加消息监听器，接收从模板设计页面发送回来的数据
+    window.addEventListener('message', handleMessageFromDesigner);
+    
     // 先获取字段和数据
     await loadFieldsAndData();
     
     // 然后一次性初始化打印组件
     await initHiprint();
+    
+    // 检查是否有从模板设计页面返回的模板数据
+    await checkSavedTemplate();
     
     isLoading.value = false;
     message.value = '';
@@ -54,10 +79,23 @@ async function loadFieldsAndData() {
     const viewId = view.id;
     
     // 获取字段信息
-    fields.value = await fetchVisibleFields(tableId, viewId);
+    fields.value = await fetchAllFields(tableId, viewId);
+    
+    // 获取记录数据
+    const records = await fetchRecordsAndValues(tableId, viewId, null, true);
+    
+    // 转换记录格式，将字段值组织成对象
+    recordsData.value = records.map(record => {
+      const recordData = { recordId: record.recordId, field: record.field };
+      if (record.field) {
+        record.field.forEach(item => {
+          recordData[item.field] = item.value;
+        });
+      }
+      return recordData;
+    });
     
     // 获取第一条记录作为测试数据
-    const records = await fetchRecordsAndValues(tableId, viewId, null, true);
     const testData = records.length > 0 ? records[0] : null;
     
     // 生成测试数据对象，将从第一条记录获取的字段值组织成对象
@@ -68,7 +106,7 @@ async function loadFieldsAndData() {
       });
     }
     
-    return { fields: fields.value, testData };
+    return { fields: fields.value, testData, records: recordsData.value };
   } catch (err) {
     console.error('获取字段失败:', err);
     message.value = '获取字段失败: ' + (err.message || String(err));
@@ -144,6 +182,141 @@ function exportTemplate() {
   return json;
 }
 
+// 导入模板JSON
+function importTemplate(jsonData) {
+  try {
+    // 清空现有模板
+    $("#hiprint-printTemplate").empty();
+    
+    // 使用update方法导入模板
+    hiprintTemplate.update(jsonData);
+    
+    // 重新渲染设计器
+    hiprintTemplate.design("#hiprint-printTemplate", { grid: true });
+    
+    ElMessage.success('模板导入成功');
+  } catch (error) {
+    console.error('导入模板失败:', error);
+    ElMessage.error('导入模板失败: ' + (error.message || String(error)));
+  }
+}
+
+// 设置纸张大小
+function setPaperSize(paperType) {
+  try {
+    const selectedOption = paperSizeOptions.value.find(option => option.value === paperType);
+    if (!selectedOption) return;
+    
+    // 根据文档，直接使用纸张类型名称
+    hiprintTemplate.setPaper(paperType);
+    ElMessage.success(`已设置纸张大小: ${selectedOption.label}`);
+  } catch (error) {
+    console.error('设置纸张大小失败:', error);
+    ElMessage.error('设置纸张大小失败: ' + (error.message || String(error)));
+  }
+}
+
+// 确认自定义纸张设置
+function confirmCustomPaper() {
+  try {
+    const width = parseFloat(customPaperForm.value.width.toString());
+    const height = parseFloat(customPaperForm.value.height.toString());
+    
+    if (isNaN(width) || width <= 0 || isNaN(height) || height <= 0) {
+      ElMessage.error('请输入有效的纸张尺寸');
+      return;
+    }
+    
+    // 修改调用方式，直接传递宽度和高度参数
+    hiprintTemplate.setPaper(width, height);
+    
+    ElMessage.success(`已设置自定义纸张大小: ${width}mm x ${height}mm`);
+    customPaperDialogVisible.value = false;
+  } catch (err) {
+    console.error('设置自定义纸张失败:', err);
+    ElMessage.error('设置自定义纸张失败: ' + (err.message || String(err)));
+  }
+}
+
+// 处理纸张大小变更
+function handlePaperSizeChange(value) {
+  selectedPaperSize.value = value;
+  
+  // 如果是自定义纸张，直接显示对话框
+  if (value === 'custom') {
+    // 重置表单默认值
+    customPaperForm.value = {
+      width: 100,
+      height: 150
+    };
+    // 显示对话框
+    customPaperDialogVisible.value = true;
+  } else {
+    // 对于标准纸张类型，直接调用setPaperSize
+    setPaperSize(value);
+  }
+}
+
+// 用户点击导入模板按钮
+function handleImportTemplate() {
+  // 创建文件输入元素
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'application/json';
+  fileInput.style.display = 'none';
+  document.body.appendChild(fileInput);
+  
+  // 监听文件选择事件
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target.result);
+        importTemplate(jsonData);
+      } catch (error) {
+        console.error('解析JSON失败:', error);
+        ElMessage.error('无效的模板文件');
+      }
+    };
+    reader.readAsText(file);
+    
+    // 清理DOM
+    document.body.removeChild(fileInput);
+  });
+  
+  // 触发文件选择对话框
+  fileInput.click();
+}
+
+// 手动导入模板JSON
+function importTemplateFromJson() {
+  ElMessageBox.prompt('请粘贴模板JSON数据', '导入模板', {
+    confirmButtonText: '导入',
+    cancelButtonText: '取消',
+    inputType: 'textarea',
+    inputPlaceholder: '粘贴JSON数据...'
+  }).then(({ value }) => {
+    try {
+      if (!value) {
+        ElMessage.warning('未提供JSON数据');
+        return;
+      }
+      
+      const jsonData = JSON.parse(value);
+      importTemplate(jsonData);
+      ElMessage.success('模板导入成功');
+    } catch (error) {
+      console.error('导入JSON失败:', error);
+      ElMessage.error('无效的JSON数据: ' + (error.message || String(error)));
+    }
+  }).catch(() => {
+    // 用户取消
+  });
+}
+
 // 打印预览
 function preview(data) {
   const jHtml = hiprintTemplate.getHtml(data);
@@ -213,17 +386,177 @@ function exportToPDF() {
 // 处理来自PrintDataSelector的打印请求
 function handlePrint(printData, isPdf = false) {
   try {
+    if (!printData || (Array.isArray(printData) && printData.length === 0)) {
+      ElMessage.warning('没有可打印的数据');
+      return;
+    }
+    
     if (isPdf) {
       const filename = `打印数据_${new Date().toISOString().split('T')[0]}.pdf`;
+      // 按照指定格式打印数据
       exportPdf(printData, filename);
       ElMessage.success('PDF导出成功');
     } else {
+      // 按照指定格式打印数据
       print(printData);
       ElMessage.success('打印预览已生成');
     }
+    
+    // 打印完成后，输出打印数据结构，方便调试
+    console.log('打印数据结构:', JSON.stringify(printData));
   } catch (error) {
     console.error('打印处理失败:', error);
     ElMessage.error('打印处理失败: ' + (error.message || String(error)));
+  }
+}
+
+// 跳转到模板设计页面
+function goToTemplateDesigner() {
+  try {
+    // 获取当前模板数据
+    const currentTemplate = hiprintTemplate ? hiprintTemplate.getJson() : {};
+    
+    // 准备要存储的数据，确保数据可以被序列化
+    // 为了减小数据量，只传递必要的字段信息
+    const fieldsData = JSON.parse(JSON.stringify(fields.value || [])).map(field => ({
+      id: field.id,
+      name: field.name,
+      type: field.type,
+      displayName: field.displayName || field.name
+    }));
+    
+    // 准备测试数据
+    const testDataClone = JSON.parse(JSON.stringify(window.fieldTestData || {}));
+    
+    // 准备要传递的数据
+    const templateData = {
+      template: currentTemplate,
+      fields: fieldsData,
+      testData: testDataClone
+    };
+    
+    // 将数据转换为JSON字符串，然后使用Base64编码
+    const jsonString = JSON.stringify(templateData);
+    
+    try {
+      // 尝试直接将完整数据编码到URL
+      const encodedData = btoa(encodeURIComponent(jsonString));
+      
+      // 检查URL长度，大多数浏览器限制URL长度在2000-8000字符之间
+      const baseUrl = window.location.origin + window.location.pathname + '#/template-designer?data=';
+      const fullUrl = baseUrl + encodedData;
+      
+      if (fullUrl.length > 2000) {
+        throw new Error('URL too long');
+      }
+      
+      // 打开新窗口
+      const newWindow = window.open(fullUrl, '_blank', 'width=1200,height=800');
+      
+      // 如果新窗口被阻止，提示用户
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
+        return;
+      }
+      
+      ElMessage.success('正在打开模板设计器');
+      
+    } catch (urlError) {
+      console.warn('URL数据过大，尝试简化数据:', urlError);
+      
+      // 如果URL太长，简化数据
+      const simplifiedData = {
+        template: currentTemplate,
+        fields: fieldsData.map(f => ({ 
+          id: f.id, 
+          name: f.name,
+          type: f.type 
+        }))
+      };
+      
+      // 重新编码
+      const simplifiedJsonString = JSON.stringify(simplifiedData);
+      const encodedSimplifiedData = btoa(encodeURIComponent(simplifiedJsonString));
+      
+      // 打开新窗口
+      const designerUrl = window.location.origin + window.location.pathname + '#/template-designer?data=' + encodedSimplifiedData;
+      const newWindow = window.open(designerUrl, '_blank', 'width=1200,height=800');
+      
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
+        return;
+      }
+      
+      ElMessage.success('正在打开模板设计器（数据已简化）');
+    }
+  } catch (error) {
+    console.error('打开模板设计器失败:', error);
+    ElMessage.error('打开模板设计器失败: ' + (error.message || String(error)));
+  }
+}
+
+// 检查是否有保存的模板
+async function checkSavedTemplate() {
+  return new Promise((resolve) => {
+    try {
+      // 从localStorage获取数据
+      const storedData = localStorage.getItem('templateDesignerData');
+      
+      if (!storedData) {
+        console.log('没有找到保存的模板数据');
+        resolve();
+        return;
+      }
+      
+      try {
+        // 解析数据
+        const templateData = JSON.parse(storedData);
+        console.log('发现保存的模板数据');
+        
+        // 检查是否有模板数据
+        if (templateData && templateData.template) {
+          console.log('正在导入模板...');
+          importTemplate(templateData.template);
+          
+          // 导入后删除保存的模板数据
+          localStorage.removeItem('templateDesignerData');
+          console.log('已删除保存的模板数据');
+          
+          ElMessage.success('已成功导入模板设计器中保存的模板');
+        } else {
+          console.warn('保存的模板数据不完整');
+        }
+      } catch (parseError) {
+        console.error('解析保存的模板数据失败:', parseError);
+        ElMessage.error('解析保存的模板数据失败: ' + (parseError.message || String(parseError)));
+      }
+    } catch (error) {
+      console.error('检查保存的模板失败:', error);
+    } finally {
+      resolve();
+    }
+  });
+}
+
+// 处理从模板设计页面发送回来的消息
+function handleMessageFromDesigner(event) {
+  try {
+    // 检查消息类型
+    if (event.data && event.data.type === 'TEMPLATE_SAVED') {
+      console.log('收到模板设计页面发送的模板数据');
+      
+      // 导入模板
+      if (event.data.template) {
+        importTemplate(event.data.template);
+        ElMessage.success('已成功导入模板设计器中保存的模板');
+      } else {
+        console.warn('收到的模板数据不完整');
+        ElMessage.warning('收到的模板数据不完整');
+      }
+    }
+  } catch (error) {
+    console.error('处理模板设计页面消息失败:', error);
+    ElMessage.error('处理模板设计页面消息失败: ' + (error.message || String(error)));
   }
 }
 </script>
@@ -247,6 +580,17 @@ function handlePrint(printData, isPdf = false) {
             <div class="template-wrapper">
               <div class="template-actions">
                 <el-button type="primary" size="small" @click="exportTemplateJSON">导出JSON</el-button>
+                <el-button type="primary" size="small" @click="handleImportTemplate">导入文件</el-button>
+                <el-button type="primary" size="small" @click="importTemplateFromJson">粘贴JSON</el-button>
+                <el-button type="info" size="small" @click="goToTemplateDesigner">独立设计器</el-button>
+                <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
+                  <el-option
+                    v-for="item in paperSizeOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
                 <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
                 <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
               </div>
@@ -260,15 +604,45 @@ function handlePrint(printData, isPdf = false) {
         
         <el-tab-pane label="数据打印" name="print">
           <PrintDataSelector 
-            :hiprintTemplate="hiprintTemplate" 
+            :hiprintTemplate="hiprintTemplate"
+            :initialFields="fields"
+            :initialRecords="recordsData"
             @print="handlePrint"
           />
         </el-tab-pane>
+
+        <el-tab-pane label="字段信息">
+        <FieldInfoViewer />
+      </el-tab-pane>
       </el-tabs>
     </div>
     
     <!-- 底部：多面板模板容器 -->
     <div class="hiprint-printPagination" v-show="!isLoading && activeTab === 'design'"></div>
+    
+    <!-- 自定义纸张大小对话框 -->
+    <el-dialog
+      v-model="customPaperDialogVisible"
+      title="自定义纸张大小"
+      width="400px"
+      :close-on-click-modal="false"
+      :show-close="true"
+    >
+      <el-form :model="customPaperForm" label-width="100px">
+        <el-form-item label="宽度 (mm)">
+          <el-input v-model="customPaperForm.width" type="number" min="1" placeholder="请输入纸张宽度"></el-input>
+        </el-form-item>
+        <el-form-item label="高度 (mm)">
+          <el-input v-model="customPaperForm.height" type="number" min="1" placeholder="请输入纸张高度"></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="customPaperDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmCustomPaper">确认</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

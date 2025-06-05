@@ -1,22 +1,15 @@
 <script setup>
-import FieldInfoViewer from './components/FieldInfoViewer.vue'
+import hiprintViewer from './components/hiprintViewer.vue'
 </script>
 
 <template>
   <main>
-    <el-tabs>
-      <el-tab-pane label="字段信息">
-        <FieldInfoViewer />
-      </el-tab-pane>
-      <el-tab-pane label="打印模板">
-        <hiprintViewer />
-      </el-tab-pane>
-    </el-tabs>
+    <router-view></router-view>
   </main>
 </template>
 
 <style scoped>
-  main {
+  /* main {
     padding: 1rem;
   }
   h4 {
@@ -27,5 +20,5 @@ import FieldInfoViewer from './components/FieldInfoViewer.vue'
     font-size: 0.875em;
     color: #d63384;
     word-wrap: break-word;
-  }
+  } */
 </style>
