@@ -134,24 +134,24 @@ async function loadRecordsAsync() {
       (loadedRecords, batchCount, isComplete) => {
         // 更新记录数据
         recordsData.value = loadedRecords.map(record => {
-          const recordData = { recordId: record.recordId, field: record.field };
-          if (record.field) {
-            record.field.forEach(item => {
-              recordData[item.field] = item.value;
-            });
-          }
-          return recordData;
+      const recordData = { recordId: record.recordId, field: record.field };
+      if (record.field) {
+        record.field.forEach(item => {
+          recordData[item.field] = item.value;
         });
-        
+      }
+      return recordData;
+    });
+    
         // 更新测试数据（使用第一条记录）
         if (loadedRecords.length > 0) {
           const testData = loadedRecords[0];
-          window.fieldTestData = {};
-          if (testData && testData.field) {
-            testData.field.forEach(item => {
-              window.fieldTestData[item.field] = item.value;
-            });
-          }
+    window.fieldTestData = {};
+    if (testData && testData.field) {
+      testData.field.forEach(item => {
+        window.fieldTestData[item.field] = item.value;
+      });
+    }
         }
         
         // 更新加载提示
@@ -865,18 +865,18 @@ async function loadDefaultTemplate() {
                 
                 <!-- 右侧：纸张和打印操作按钮组 -->
                 <div class="action-group">
-                  <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
-                    <el-option
-                      v-for="item in paperSizeOptions"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
+                <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
+                  <el-option
+                    v-for="item in paperSizeOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
                   <el-button type="info" size="small" @click="goToTemplateDesigner">独立设计器</el-button>
-                  <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
-                  <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
-                </div>
+                <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
+                <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
+              </div>
               </div>
               
               <div id="hiprint-printTemplate" class="template-container"></div>
@@ -905,8 +905,8 @@ async function loadDefaultTemplate() {
         </el-tab-pane>
 
         <el-tab-pane label="字段信息">
-          <FieldInfoViewer />
-        </el-tab-pane>
+        <FieldInfoViewer />
+      </el-tab-pane>
       </el-tabs>
     </div>
     

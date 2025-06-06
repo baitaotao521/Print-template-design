@@ -75,18 +75,69 @@
       <el-button type="primary" @click="fetchData" :loading="isLoading">获取数据</el-button>
       <el-button type="success" @click="printSelected" :disabled="selectedRows.length === 0">打印选中数据</el-button>
       <el-button type="warning" @click="exportPDF" :disabled="selectedRows.length === 0">导出PDF</el-button>
+      <el-button type="info" @click="exportToBase" :disabled="selectedRows.length === 0">导出至多维表格</el-button>
     </div>
+    
+    <!-- 导出至多维表格对话框 -->
+    <el-dialog
+      v-model="exportToBaseDialogVisible"
+      title="导出至多维表格"
+      width="500px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <div v-if="!isExporting">
+        <p>请选择要将文件导出到的附件字段:</p>
+        <el-select v-model="selectedAttachmentField" placeholder="选择附件字段" style="width: 100%">
+          <el-option
+            v-for="field in attachmentFields"
+            :key="field.id"
+            :label="field.name"
+            :value="field.id"
+          />
+        </el-select>
+        
+        <div class="format-selection" style="margin-top: 15px;">
+          <p>请选择导出格式:</p>
+          <el-radio-group v-model="exportFormat">
+            <el-radio label="pdf">PDF格式</el-radio>
+            <el-radio label="jpeg">JPEG图片格式</el-radio>
+          </el-radio-group>
+        </div>
+        
+        <p class="export-tip">注意: 每条记录将生成一个单独的文件，并上传到对应记录的附件字段中</p>
+        <p class="export-tip">注意: JPEG格式会使用浏览器进行转换，可能影响图片质量和系统性能，建议根据实际需求选择合适的格式</p>
+      </div>
+      
+      <div v-else class="export-progress">
+        <p>正在导出至多维表格 ({{ exportCurrent }}/{{ exportTotal }})</p>
+        <el-progress :percentage="exportProgress" :format="percent => `${percent}%`" />
+      </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="exportToBaseDialogVisible = false" :disabled="isExporting">取消</el-button>
+          <el-button type="primary" @click="executeExport" :loading="isExporting" :disabled="isExporting">
+            {{ isExporting ? '导出中...' : '开始导出' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElDialog, ElSelect, ElOption, ElButton, ElProgress, ElRadioGroup, ElRadio } from 'element-plus';
 // @ts-ignore
 import { fetchAllFields } from '@/utils/fieldFetcher';
 // @ts-ignore
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
+// @ts-ignore
+import { getAttachmentFields } from '@/utils/attachmentUploader';
+// @ts-ignore
+import { convertPdfToJpegFile } from '@/utils/pdfToImageConverter';
 
 // 定义字段类型
 interface Field {
@@ -419,6 +470,183 @@ function invertSelection(): void {
     selectedRows.value = [...otherPagesSelected, ...newlySelected];
   }
 }
+
+// 添加附件上传相关的状态
+const attachmentFields = ref([]);
+const selectedAttachmentField = ref('');
+const exportToBaseDialogVisible = ref(false);
+const exportProgress = ref(0);
+const exportTotal = ref(0);
+const exportCurrent = ref(0);
+const isExporting = ref(false);
+const exportFormat = ref('pdf');
+
+// 添加获取附件字段的方法
+async function fetchAttachmentFields() {
+  try {
+    const table = await bitable.base.getActiveTable();
+    const tableId = table.id;
+    
+    // 获取附件类型的字段
+    const fields = await getAttachmentFields(tableId);
+    attachmentFields.value = fields;
+    
+    // 如果有附件字段，默认选择第一个
+    if (fields.length > 0) {
+      selectedAttachmentField.value = fields[0].id;
+    }
+  } catch (error) {
+    console.error('获取附件字段失败:', error);
+    ElMessage.error('获取附件字段失败: ' + (error.message || String(error)));
+  }
+}
+
+// 添加导出至多维表格的方法
+async function exportToBase() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要导出的数据');
+    return;
+  }
+  
+  // 打开选择附件字段的对话框
+  await fetchAttachmentFields();
+  
+  if (attachmentFields.value.length === 0) {
+    ElMessage.warning('当前表格中没有附件类型字段，请先添加附件字段');
+    return;
+  }
+  
+  exportToBaseDialogVisible.value = true;
+}
+
+// 添加执行导出的方法
+async function executeExport() {
+  if (!selectedAttachmentField.value) {
+    ElMessage.warning('请选择一个附件字段');
+    return;
+  }
+  
+  try {
+    isExporting.value = true;
+    exportProgress.value = 0;
+    exportTotal.value = selectedRows.value.length;
+    exportCurrent.value = 0;
+    
+    const table = await bitable.base.getActiveTable();
+    
+    // 获取附件字段
+    const attachmentField = await table.getFieldById(selectedAttachmentField.value);
+    
+    // 逐个处理选中的记录
+    for (const row of selectedRows.value) {
+      exportCurrent.value++;
+      
+      try {
+        // 准备单条记录的打印数据
+        const printItem = prepareSinglePrintData(row);
+        
+        // 生成PDF
+        const pdfBlob = await generatePDF(printItem);
+        
+        if (!pdfBlob) {
+          throw new Error('生成PDF失败');
+        }
+        
+        // 构造基础文件名（不含扩展名）
+        const baseFileName = `记录_${row.recordId}_${new Date().toISOString().split('T')[0]}`;
+        
+        let file;
+        
+        // 根据选择的格式处理文件
+        if (exportFormat.value === 'pdf') {
+          // PDF格式，直接使用生成的PDF Blob
+          file = new File([pdfBlob], `${baseFileName}.pdf`, { type: 'application/pdf' });
+        } else {
+          // JPEG格式，需要转换
+          // 使用转换工具将PDF转为JPEG
+          file = await convertPdfToJpegFile(pdfBlob, baseFileName);
+        }
+        
+        // 上传文件到附件字段
+        await attachmentField.setValue(row.recordId, file);
+        
+        // 更新进度
+        exportProgress.value = (exportCurrent.value / exportTotal.value) * 100;
+        
+        // 添加短暂延迟，避免API调用过于频繁
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (recordError) {
+        console.error(`处理记录 ${row.recordId} 失败:`, recordError);
+        ElMessage.warning(`处理记录 ${row.recordId} 失败: ${recordError.message || String(recordError)}`);
+      }
+    }
+    
+    ElMessage.success(`已成功导出 ${exportCurrent.value} 条记录的${exportFormat.value === 'pdf' ? 'PDF' : 'JPEG图片'}到多维表格`);
+    exportToBaseDialogVisible.value = false;
+  } catch (error) {
+    console.error('导出至多维表格失败:', error);
+    ElMessage.error('导出至多维表格失败: ' + (error.message || String(error)));
+  } finally {
+    isExporting.value = false;
+  }
+}
+
+// 准备单条记录的打印数据
+function prepareSinglePrintData(row) {
+  // 复制所有字段数据，排除recordId和field
+  const rowData = { ...row };
+  delete rowData.recordId;
+  delete rowData.field;
+  
+  // 构造打印数据对象，包含普通文本字段和表格数据
+  const printItem = {};
+  
+  // 添加所有字段作为普通文本字段
+  Object.keys(rowData).forEach(key => {
+    printItem[key] = rowData[key];
+  });
+  
+  // 添加表格数据 - 将同一条记录作为表格数据
+  printItem.table = [rowData];
+  
+  return printItem;
+}
+
+// 生成PDF
+async function generatePDF(printItem) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!props.hiprintTemplate) {
+        reject(new Error('打印模板未初始化'));
+        return;
+      }
+      
+      // 使用hiprint内置的toPdf方法获取PDF Blob
+      const fileName = `记录_${new Date().toISOString().split('T')[0]}`;
+      props.hiprintTemplate.toPdf(
+        [printItem], 
+        fileName,
+        {
+          isDownload: false, // 不自动下载
+          type: 'blob', // 直接获取Blob对象
+        }
+      ).then((pdfBlob) => {
+        if (pdfBlob instanceof Blob) {
+          resolve(pdfBlob);
+        } else {
+          console.error('PDF生成结果不是Blob对象:', pdfBlob);
+          reject(new Error('生成PDF失败，未返回Blob对象'));
+        }
+      }).catch((error) => {
+        console.error('生成PDF失败:', error);
+        reject(error || new Error('生成PDF失败'));
+      });
+    } catch (error) {
+      console.error('生成PDF过程出错:', error);
+      reject(error);
+    }
+  });
+}
 </script>
 
 <style scoped>
@@ -527,5 +755,28 @@ h4 {
 
 :deep(.el-table__row:hover) {
   background-color: #f5f7fa;
+}
+
+.export-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 10px;
+}
+
+.export-progress {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.format-selection {
+  margin-top: 15px;
+}
+
+.quality-slider {
+  margin-top: 10px;
+}
+
+.scale-slider {
+  margin-top: 10px;
 }
 </style> 
