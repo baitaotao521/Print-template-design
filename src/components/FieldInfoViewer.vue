@@ -49,7 +49,7 @@
 import { ref, onMounted } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
-import { fetchAllFields } from '@/utils/fieldFetcher';
+import { fetchVisibleFields } from '@/utils/fieldFetcher';
 
 const message = ref('');
 const fields = ref([]);
@@ -74,7 +74,7 @@ async function fetchFieldInfo() {
     const tableId = table.id;
     const viewId = view.id;
     
-    fields.value = await fetchAllFields(tableId, viewId);
+    fields.value = await fetchVisibleFields(tableId, viewId);
     message.value = `已获取当前视图下 ${fields.value.length} 个可见字段的信息`;
   } catch (err) {
     message.value = `获取字段信息时出错: ${err.message}`;

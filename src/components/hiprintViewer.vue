@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
-import { fetchAllFields } from '@/utils/fieldFetcher';
+import { fetchVisibleFields } from '@/utils/fieldFetcher';
 // @ts-ignore
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
@@ -105,7 +105,7 @@ async function loadFields() {
     const viewId = view.id;
     
     // 获取字段信息
-    fields.value = await fetchAllFields(tableId, viewId);
+    fields.value = await fetchVisibleFields(tableId, viewId);
     
     return { fields: fields.value, tableId, viewId };
   } catch (err) {
@@ -819,6 +819,11 @@ async function loadDefaultTemplate() {
     // 失败时不显示错误消息，静默失败
   }
 }
+
+// 添加一个新的方法来处理跳转到帮助页面
+function goToHelpPage() {
+  router.push('/help');
+}
 </script>
 
 <template>
@@ -831,8 +836,18 @@ async function loadDefaultTemplate() {
     </div>
     
     <div class="hiprint-container" v-show="!isLoading">
-      <el-tabs v-model="activeTab" class="hiprint-tabs">
-        <el-tab-pane label="设计模板" name="design">
+      <div class="tabs-header">
+        <el-tabs v-model="activeTab" class="hiprint-tabs">
+          <el-tab-pane label="设计模板" name="design"></el-tab-pane>
+          <el-tab-pane label="数据打印" name="print"></el-tab-pane>
+          <el-tab-pane label="模板管理" name="template-manager"></el-tab-pane>
+          <el-tab-pane label="字段信息" name="field-info"></el-tab-pane>
+        </el-tabs>
+        <el-button type="primary" @click="goToHelpPage" size="small">使用帮助</el-button>
+      </div>
+      
+      <div class="tab-content">
+        <template v-if="activeTab === 'design'">
           <div class="design-container">
             <!-- 左侧：存放可拖拽元素的容器 -->
             <div id="provider-container" class="provider-container"></div>
@@ -873,7 +888,7 @@ async function loadDefaultTemplate() {
                     :value="item.value"
                   />
                 </el-select>
-                  <el-button type="info" size="small" @click="goToTemplateDesigner">独立设计器</el-button>
+                  <el-button type="success" size="small" @click="goToTemplateDesigner">独立设计器(推荐使用)</el-button>
                 <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
                 <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
               </div>
@@ -885,29 +900,28 @@ async function loadDefaultTemplate() {
             <!-- 右侧：点击元素/面板时，渲染参数的容器 -->
             <div id="PrintElementOptionSetting" class="setting-container"></div>
           </div>
-        </el-tab-pane>
+        </template>
         
-        <el-tab-pane label="数据打印" name="print">
+        <template v-else-if="activeTab === 'print'">
           <PrintDataSelector 
             :hiprintTemplate="hiprintTemplate"
             :initialFields="fields"
             :initialRecords="recordsData"
             @print="handlePrint"
           />
-        </el-tab-pane>
+        </template>
 
-        <!-- 恢复模板管理标签页 -->
-        <el-tab-pane label="模板管理" name="template-manager">
+        <template v-else-if="activeTab === 'template-manager'">
           <TemplateManager 
             :hiprintTemplate="hiprintTemplate"
             @load-template="handleLoadTemplateFromManager"
           />
-        </el-tab-pane>
+        </template>
 
-        <el-tab-pane label="字段信息">
-        <FieldInfoViewer />
-      </el-tab-pane>
-      </el-tabs>
+        <template v-else-if="activeTab === 'field-info'">
+          <FieldInfoViewer />
+        </template>
+      </div>
     </div>
     
     <!-- 底部：多面板模板容器 -->
@@ -946,6 +960,22 @@ async function loadDefaultTemplate() {
   height: 100%;
   padding: 20px;
   position: relative;
+}
+
+.tabs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tabs-actions {
+  display: flex;
+  align-items: center;
+}
+
+.hiprint-tabs {
+  flex: 1;
 }
 
 .message {
@@ -994,11 +1024,7 @@ async function loadDefaultTemplate() {
   height: calc(100% - 40px);
 }
 
-.hiprint-tabs {
-  height: 100%;
-}
-
-:deep(.el-tabs__content) {
+.tab-content {
   height: calc(100% - 40px);
   overflow: auto;
 }

@@ -10,6 +10,11 @@ const routes = [
     path: '/template-designer',
     name: 'TemplateDesigner',
     component: () => import('../views/TemplateDesigner.vue')
+  },
+  {
+    path: '/help',
+    name: 'Help',
+    component: () => import('../views/HelpPage.vue')
   }
 ]
 

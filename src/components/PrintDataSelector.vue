@@ -131,7 +131,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { ElMessage, ElDialog, ElSelect, ElOption, ElButton, ElProgress, ElRadioGroup, ElRadio } from 'element-plus';
 // @ts-ignore
-import { fetchAllFields } from '@/utils/fieldFetcher';
+import { fetchVisibleFields } from '@/utils/fieldFetcher';
 // @ts-ignore
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
@@ -246,7 +246,7 @@ async function fetchFieldInfo(): Promise<void> {
     const tableId = table.id;
     const viewId = view.id;
     
-    fields.value = await fetchAllFields(tableId, viewId);
+    fields.value = await fetchVisibleFields(tableId, viewId);
     
     // 默认选择前4个字段
     selectedFields.value = fields.value.slice(0, 4).map(field => field.id);
