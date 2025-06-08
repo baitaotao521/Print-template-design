@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
@@ -768,47 +768,41 @@ function handleLoadTemplateFromManager(templateData) {
 
     console.log('从模板管理器加载模板数据:', templateData);
 
-    // 验证并补充必要的属性
-    let validatedData = templateData;
-
-    // 如果数据是字符串，尝试解析
-    if (typeof templateData === 'string') {
-      validatedData = JSON.parse(templateData);
-    }
-
-    // 确保模板数据包含必要的属性
-    const completeData = {
-      ...validatedData,
-      panels: validatedData.panels || [],
-      width: validatedData.width || 210,
-      height: validatedData.height || 297,
-      paperType: validatedData.paperType || 'A4',
-      paperHeader: validatedData.paperHeader || 0,
-      paperFooter: validatedData.paperFooter || 0,
-      printElements: validatedData.printElements || []
-    };
-
-    // 确保panels数组中的每个面板都有必要的属性
-    if (completeData.panels && completeData.panels.length > 0) {
-      completeData.panels = completeData.panels.map(panel => ({
-        ...panel,
-        printElements: panel.printElements || [],
-        width: panel.width || completeData.width,
-        height: panel.height || completeData.height,
-        paperHeader: panel.paperHeader !== undefined ? panel.paperHeader : completeData.paperHeader,
-        paperFooter: panel.paperFooter !== undefined ? panel.paperFooter : completeData.paperFooter
-      }));
-    }
-
-    console.log('验证后的模板数据:', completeData);
-
     // 切换到设计标签页
     activeTab.value = 'design';
 
-    // 导入模板
-    importTemplate(completeData);
+    // 等待DOM更新后再导入模板
+    nextTick(() => {
+      try {
+        // 确保容器存在
+        const container = document.getElementById('hiprint-printTemplate');
+        if (!container) {
+          console.error('找不到模板容器元素');
+          ElMessage.error('模板容器未准备好，请稍后重试');
+          return;
+        }
 
-    ElMessage.success('模板已成功加载到设计器');
+        // 直接使用原始数据，不进行修改
+        // 这样可以保持与文件导入相同的数据格式
+        let rawData = templateData;
+
+        // 如果数据是字符串，尝试解析
+        if (typeof templateData === 'string') {
+          rawData = JSON.parse(templateData);
+        }
+
+        console.log('准备导入的原始模板数据:', rawData);
+
+        // 导入模板
+        importTemplate(rawData);
+
+        ElMessage.success('模板已成功加载到设计器');
+      } catch (innerError) {
+        console.error('导入模板时发生错误:', innerError);
+        ElMessage.error('导入模板失败: ' + (innerError.message || String(innerError)));
+      }
+    });
+
   } catch (error) {
     console.error('加载模板失败:', error);
     ElMessage.error('加载模板失败: ' + (error.message || String(error)));

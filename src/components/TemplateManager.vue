@@ -135,46 +135,8 @@ async function removeTemplate(id) {
 
 // 加载模板到设计器
 function loadTemplateToDesigner(template) {
-  try {
-    // 确保模板数据格式正确
-    let templateData = template.data;
-
-    // 如果数据是字符串，尝试解析
-    if (typeof templateData === 'string') {
-      templateData = JSON.parse(templateData);
-    }
-
-    // 验证并补充必要的属性
-    const validatedData = {
-      ...templateData,
-      panels: templateData.panels || [],
-      width: templateData.width || 210,
-      height: templateData.height || 297,
-      paperType: templateData.paperType || 'A4',
-      paperHeader: templateData.paperHeader || 0,
-      paperFooter: templateData.paperFooter || 0,
-      printElements: templateData.printElements || []
-    };
-
-    // 确保panels数组中的每个面板都有必要的属性
-    if (validatedData.panels && validatedData.panels.length > 0) {
-      validatedData.panels = validatedData.panels.map(panel => ({
-        ...panel,
-        printElements: panel.printElements || [],
-        width: panel.width || validatedData.width,
-        height: panel.height || validatedData.height,
-        paperHeader: panel.paperHeader !== undefined ? panel.paperHeader : validatedData.paperHeader,
-        paperFooter: panel.paperFooter !== undefined ? panel.paperFooter : validatedData.paperFooter
-      }));
-    }
-
-    console.log('加载模板数据:', validatedData);
-    emit('load-template', validatedData);
-    ElMessage.success('模板已加载到设计器');
-  } catch (error) {
-    console.error('加载模板失败:', error);
-    ElMessage.error('加载模板失败: ' + (error.message || String(error)));
-  }
+  emit('load-template', template.data);
+  ElMessage.success('模板已加载到设计器');
 }
 
 // 导出模板JSON
