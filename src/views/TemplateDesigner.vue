@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
@@ -21,7 +21,7 @@ import {
 } from 'element-plus';
 import {
   Edit, Setting, Printer, Download, Back, FullScreen,
-  Document, Refresh, Check, Close, Monitor
+  Document, Refresh, Check, Close, Monitor, WarningFilled
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -29,6 +29,10 @@ const message = ref('');
 const isLoading = ref(true);
 let hiprintTemplate: any = null;
 let templateData = ref(null);
+
+// 跟踪是否有未保存的更改
+const hasUnsavedChanges = ref(false);
+const isExitingProperly = ref(false); // 标记是否通过正确方式退出
 
 // 添加纸张大小选项
 const paperSizeOptions = ref([
@@ -46,17 +50,36 @@ const customPaperForm = ref({
   height: 150
 });
 
+// 浏览器关闭前的警告处理
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  // 如果正在通过正确方式退出，不显示警告
+  if (isExitingProperly.value) {
+    return;
+  }
+
+  // 如果有未保存的更改，显示警告
+  if (hasUnsavedChanges.value) {
+    const message = '您有未保存的模板更改！请使用左侧的"保存并返回"或"返回"按钮，否则数据将丢失。';
+    event.preventDefault();
+    event.returnValue = message;
+    return message;
+  }
+}
+
 onMounted(async () => {
   try {
     isLoading.value = true;
     message.value = '正在加载数据...';
-    
+
+    // 添加浏览器关闭前的警告监听器
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     // 从sessionStorage加载数据
     await loadTemplateDataFromDB();
-    
+
     // 初始化打印组件
     await initHiprint();
-    
+
     isLoading.value = false;
     message.value = '';
   } catch (err) {
@@ -64,6 +87,11 @@ onMounted(async () => {
     message.value = '初始化失败: ' + (err.message || String(err));
     isLoading.value = false;
   }
+});
+
+// 组件卸载时移除监听器
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 
 // 从URL加载模板数据
@@ -151,6 +179,8 @@ async function initHiprint() {
       onDataChanged: (type, json) => {
         console.log('模板变更类型:', type);
         console.log('模板数据:', json);
+        // 标记有未保存的更改
+        hasUnsavedChanges.value = true;
       },
       onUpdateError: (e) => {
         console.error('更新失败:', e);
@@ -242,6 +272,10 @@ function handlePaperSizeChange(value) {
 // 保存模板并返回
 function saveTemplateAndReturn() {
   try {
+    // 标记正在正确退出
+    isExitingProperly.value = true;
+    hasUnsavedChanges.value = false;
+
     // 获取当前模板数据并确保可以序列化
     const json = exportTemplate();
     const serializedTemplate = JSON.parse(JSON.stringify(json));
@@ -339,11 +373,18 @@ function saveTemplateAndReturn() {
 
 // 返回上一页
 function goBack() {
-  ElMessageBox.confirm('确定要返回吗？未保存的更改将丢失', '提示', {
+  const confirmMessage = hasUnsavedChanges.value
+    ? '确定要返回吗？您有未保存的更改将丢失！'
+    : '确定要返回吗？';
+
+  ElMessageBox.confirm(confirmMessage, '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
   }).then(() => {
+    // 标记正在正确退出
+    isExitingProperly.value = true;
+    hasUnsavedChanges.value = false;
     window.close();
   }).catch(() => {});
 }
@@ -364,6 +405,25 @@ function printPreview() {
 
 <template>
   <div class="template-designer">
+    <!-- 重要提示横幅 -->
+    <div class="warning-banner">
+      <div class="banner-content">
+        <div class="banner-icon">
+          <el-icon><WarningFilled /></el-icon>
+        </div>
+        <div class="banner-text">
+          <strong>⚠️ 重要提示：</strong>
+          请勿直接关闭浏览器！使用左侧的"保存并返回"或"返回"按钮，否则数据将丢失。
+        </div>
+        <div class="banner-status" v-if="hasUnsavedChanges">
+          <el-tag type="warning" size="small">
+            <el-icon><Edit /></el-icon>
+            有未保存更改
+          </el-tag>
+        </div>
+      </div>
+    </div>
+
     <!-- 页面头部 -->
     <div class="designer-header">
       <div class="header-content">
@@ -530,6 +590,67 @@ function printPreview() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* 警告横幅样式 */
+.warning-banner {
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  color: white;
+  padding: 12px 30px;
+  box-shadow: 0 2px 10px rgba(255, 152, 0, 0.3);
+  position: relative;
+  z-index: 100;
+  animation: slideInFromTop 0.5s ease-out;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  max-width: 1400px;
+  margin: 0 auto;
+  justify-content: center;
+}
+
+.banner-icon {
+  font-size: 20px;
+  color: #fff3e0;
+  animation: pulse 2s infinite;
+}
+
+.banner-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.banner-text strong {
+  font-weight: 700;
+}
+
+.banner-status {
+  flex-shrink: 0;
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 /* 页面头部样式 */
@@ -945,6 +1066,20 @@ function printPreview() {
 }
 
 @media (max-width: 768px) {
+  .warning-banner {
+    padding: 10px 20px;
+  }
+
+  .banner-content {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .banner-text {
+    font-size: 13px;
+  }
+
   .designer-header {
     padding: 15px 20px;
   }

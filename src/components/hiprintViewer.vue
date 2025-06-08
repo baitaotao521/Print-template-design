@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, nextTick, watch } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
@@ -59,11 +59,23 @@ const templateName = ref('');
 
 // 标签页配置
 const tabs = ref([
-  { name: 'design', label: '设计模板', icon: 'Edit' },
-  { name: 'print', label: '数据打印', icon: 'Printer' },
-  { name: 'template-manager', label: '模板管理', icon: 'FolderOpened' },
-  { name: 'field-info', label: '字段信息', icon: 'DataBoard' }
+  { name: 'design', label: '设计模板', icon: Edit, emoji: '🎨' },
+  { name: 'print', label: '数据打印', icon: Printer, emoji: '🖨️' },
+  { name: 'template-manager', label: '模板管理', icon: FolderOpened, emoji: '📁' },
+  { name: 'field-info', label: '字段信息', icon: DataBoard, emoji: '📊' }
 ]);
+
+// 监听标签页切换，重新渲染hiprint组件
+watch(activeTab, async (newTab, oldTab) => {
+  if (newTab === 'design' && oldTab !== 'design' && hiprintTemplate) {
+    console.log('切换到设计标签页，准备重新渲染hiprint组件');
+    // 当切换到设计标签页时，等待DOM更新后重新渲染
+    await nextTick();
+    setTimeout(() => {
+      reRenderHiprint();
+    }, 150);
+  }
+});
 
 onMounted(async () => {
   try {
@@ -203,6 +215,49 @@ async function loadFieldsAndData() {
   }
 }
 
+// 重新渲染hiprint组件（用于标签页切换后的重新显示）
+function reRenderHiprint() {
+  try {
+    if (!hiprintTemplate) {
+      console.warn('hiprintTemplate未初始化，无法重新渲染');
+      return;
+    }
+
+    // 检查容器是否存在
+    const templateContainer = $("#hiprint-printTemplate");
+    const providerContainer = $("#provider-container");
+
+    if (templateContainer.length === 0) {
+      console.warn('模板容器不存在，无法重新渲染');
+      return;
+    }
+
+    // 重新渲染设计器
+    hiprintTemplate.design("#hiprint-printTemplate", { grid: true });
+
+    // 重新渲染可拖拽元素
+    if (providerContainer.length > 0) {
+      providerContainer.empty();
+      hiprint.PrintElementTypeManager.build(providerContainer, "defaultModule");
+      hiprint.PrintElementTypeManager.build(providerContainer, "customModule");
+
+      // 重新添加列表容器类
+      setTimeout(() => {
+        $('.ep-draggable-item-group').each(function() {
+          const $items = $(this).children('.ep-draggable-item');
+          if ($items.length > 0) {
+            $items.wrapAll('<div class="ep-draggable-item-list"></div>');
+          }
+        });
+      }, 200);
+    }
+
+    console.log('hiprint组件重新渲染完成');
+  } catch (error) {
+    console.error('重新渲染hiprint组件失败:', error);
+  }
+}
+
 // 一次性初始化打印组件
 async function initHiprint() {
   try {
@@ -276,13 +331,20 @@ function importTemplate(jsonData) {
   try {
     // 清空现有模板
     $("#hiprint-printTemplate").empty();
-    
+
     // 使用update方法导入模板
     hiprintTemplate.update(jsonData);
-    
+
     // 重新渲染设计器
     hiprintTemplate.design("#hiprint-printTemplate", { grid: true });
-    
+
+    // 如果当前不在设计标签页，确保重新渲染
+    if (activeTab.value === 'design') {
+      setTimeout(() => {
+        reRenderHiprint();
+      }, 100);
+    }
+
     ElMessage.success('模板导入成功');
   } catch (error) {
     console.error('导入模板失败:', error);
@@ -796,6 +858,11 @@ function handleLoadTemplateFromManager(templateData) {
         // 导入模板
         importTemplate(rawData);
 
+        // 确保重新渲染
+        setTimeout(() => {
+          reRenderHiprint();
+        }, 200);
+
         ElMessage.success('模板已成功加载到设计器');
       } catch (innerError) {
         console.error('导入模板时发生错误:', innerError);
@@ -912,11 +979,15 @@ function goToHelpPage() {
             v-for="tab in tabs"
             :key="tab.name"
             :class="['tab-button', { active: activeTab === tab.name }]"
+            :data-tab="tab.name"
             @click="activeTab = tab.name"
           >
-            <el-icon>
-              <component :is="tab.icon" />
-            </el-icon>
+            <div class="tab-icon">
+              <el-icon v-if="tab.icon">
+                <component :is="tab.icon" />
+              </el-icon>
+              <span v-else class="emoji-icon">{{ tab.emoji }}</span>
+            </div>
             <span>{{ tab.label }}</span>
           </button>
         </div>
@@ -1342,13 +1413,114 @@ function goToHelpPage() {
   font-weight: 600;
 }
 
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
 .tab-button .el-icon {
+  font-size: 20px;
+  transition: all 0.3s ease;
+}
+
+.emoji-icon {
   font-size: 18px;
+  transition: all 0.3s ease;
+}
+
+.tab-button:hover .el-icon,
+.tab-button:hover .emoji-icon {
+  transform: scale(1.1);
+  color: #667eea;
+}
+
+.tab-button.active .el-icon,
+.tab-button.active .emoji-icon {
+  color: #667eea;
+  transform: scale(1.05);
 }
 
 .tab-button span {
   font-size: 12px;
   line-height: 1;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+/* 不同标签页的主题色 */
+.tab-button[data-tab="design"]:hover .el-icon,
+.tab-button[data-tab="design"].active .el-icon,
+.tab-button[data-tab="design"]:hover .emoji-icon,
+.tab-button[data-tab="design"].active .emoji-icon {
+  color: #67c23a; /* 绿色 - 设计 */
+}
+
+.tab-button[data-tab="print"]:hover .el-icon,
+.tab-button[data-tab="print"].active .el-icon,
+.tab-button[data-tab="print"]:hover .emoji-icon,
+.tab-button[data-tab="print"].active .emoji-icon {
+  color: #e6a23c; /* 橙色 - 打印 */
+}
+
+.tab-button[data-tab="template-manager"]:hover .el-icon,
+.tab-button[data-tab="template-manager"].active .el-icon,
+.tab-button[data-tab="template-manager"]:hover .emoji-icon,
+.tab-button[data-tab="template-manager"].active .emoji-icon {
+  color: #409eff; /* 蓝色 - 管理 */
+}
+
+.tab-button[data-tab="field-info"]:hover .el-icon,
+.tab-button[data-tab="field-info"].active .el-icon,
+.tab-button[data-tab="field-info"]:hover .emoji-icon,
+.tab-button[data-tab="field-info"].active .emoji-icon {
+  color: #f56c6c; /* 红色 - 信息 */
+}
+
+/* 标签页底部边框颜色 */
+.tab-button[data-tab="design"].active {
+  border-bottom-color: #67c23a;
+}
+
+.tab-button[data-tab="print"].active {
+  border-bottom-color: #e6a23c;
+}
+
+.tab-button[data-tab="template-manager"].active {
+  border-bottom-color: #409eff;
+}
+
+.tab-button[data-tab="field-info"].active {
+  border-bottom-color: #f56c6c;
+}
+
+/* 图标动画效果 */
+.tab-button .el-icon,
+.tab-button .emoji-icon {
+  position: relative;
+}
+
+.tab-button .el-icon::before,
+.tab-button .emoji-icon::before {
+  transition: all 0.3s ease;
+}
+
+.tab-button:hover .el-icon,
+.tab-button:hover .emoji-icon {
+  animation: iconBounce 0.6s ease;
+}
+
+@keyframes iconBounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0) scale(1.1);
+  }
+  40% {
+    transform: translateY(-3px) scale(1.15);
+  }
+  60% {
+    transform: translateY(-1px) scale(1.12);
+  }
 }
 
 /* 标签内容样式 */
@@ -2031,6 +2203,15 @@ function goToHelpPage() {
 
   .tab-button span {
     font-size: 11px;
+  }
+
+  .tab-button .el-icon {
+    font-size: 16px;
+  }
+
+  .tab-button:hover .el-icon {
+    animation: none; /* 移动端禁用动画 */
+    transform: scale(1.05);
   }
 
   .panel-header h3 {
