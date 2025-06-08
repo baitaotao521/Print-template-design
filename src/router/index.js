@@ -15,6 +15,11 @@ const routes = [
     path: '/help',
     name: 'Help',
     component: () => import('../views/HelpPage.vue')
+  },
+  {
+    path: '/demo',
+    name: 'Demo',
+    component: () => import('../components/PrintDataSelectorDemo.vue')
   }
 ]
 

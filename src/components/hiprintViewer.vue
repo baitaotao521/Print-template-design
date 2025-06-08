@@ -13,7 +13,7 @@ import FieldInfoViewer from './FieldInfoViewer.vue';
 import TemplateManager from './TemplateManager.vue';
 import $ from 'jquery';
 import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput, ElDropdown, ElDropdownMenu, ElDropdownItem, ElIcon } from 'element-plus';
-import { Printer, QuestionFilled, WarningFilled, Loading, Edit, DataBoard, FolderOpened, InfoFilled, Setting, Download, Upload } from '@element-plus/icons-vue';
+import { Printer, QuestionFilled, WarningFilled, Loading, Edit, DataBoard, FolderOpened, InfoFilled, Setting, Download, Upload, ArrowDown } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import { saveTemplate, getTemplate, getAllTemplates, deleteTemplate } from '@/utils/indexedDBHelper';
 
@@ -69,7 +69,7 @@ onMounted(async () => {
   try {
     isLoading.value = true;
     message.value = '正在初始化...';
-    
+
     // 添加消息监听器，接收从模板设计页面发送回来的数据
     window.addEventListener('message', handleMessageFromDesigner);
     
@@ -934,57 +934,133 @@ function goToHelpPage() {
             <p>拖拽元素到画布，设计您的打印模板</p>
           </div>
 
+          <!-- 推荐提示 -->
+          <div class="recommendation-banner">
+            <div class="banner-content">
+              <div class="banner-icon">
+                <el-icon><InfoFilled /></el-icon>
+              </div>
+              <div class="banner-text">
+                <h4>💡 推荐使用独立设计器</h4>
+                <p>为了获得更好的设计体验，建议使用独立设计器进行模板设计，功能更完整，操作更流畅！</p>
+              </div>
+              <div class="banner-actions">
+                <el-button type="primary" size="small" @click="goToTemplateDesigner" class="recommend-button">
+                  <el-icon><Edit /></el-icon>
+                  立即使用
+                </el-button>
+              </div>
+            </div>
+          </div>
+
           <!-- 工具栏 -->
           <div class="toolbar">
-            <div class="toolbar-section">
-              <label>模板名称：</label>
-              <el-input
-                v-model="templateName"
-                placeholder="输入模板名称"
-                size="small"
-                style="width: 200px;"
-              />
-              <el-button type="primary" size="small" @click="saveCurrentTemplate" :icon="Download">
-                保存模板
-              </el-button>
-            </div>
+            <div class="toolbar-container">
+              <!-- 模板管理区域 -->
+              <div class="toolbar-group template-group">
+                <div class="group-header">
+                  <el-icon class="group-icon"><Edit /></el-icon>
+                  <span class="group-title">模板管理</span>
+                </div>
+                <div class="group-content">
+                  <div class="input-group">
+                    <label class="input-label">模板名称</label>
+                    <el-input
+                      v-model="templateName"
+                      placeholder="输入模板名称"
+                      size="small"
+                      class="template-name-input"
+                    />
+                  </div>
+                  <el-button
+                    type="primary"
+                    size="small"
+                    @click="saveCurrentTemplate"
+                    :icon="Download"
+                    class="action-button save-button"
+                  >
+                    保存模板
+                  </el-button>
+                </div>
+              </div>
 
-            <div class="toolbar-section">
-              <el-dropdown @command="handleTemplateCommand" trigger="click">
-                <el-button type="info" size="small" :icon="Setting">
-                  模板操作
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="export" :icon="Download">导出JSON</el-dropdown-item>
-                    <el-dropdown-item command="import" :icon="Upload">导入模板</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <!-- 分隔线 -->
+              <div class="toolbar-divider"></div>
 
-              <el-select
-                v-model="selectedPaperSize"
-                placeholder="纸张大小"
-                size="small"
-                @change="handlePaperSizeChange"
-                style="width: 100px;"
-              >
-                <el-option
-                  v-for="item in paperSizeOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-            </div>
+              <!-- 模板操作区域 -->
+              <div class="toolbar-group operations-group">
+                <div class="group-header">
+                  <el-icon class="group-icon"><Setting /></el-icon>
+                  <span class="group-title">模板操作</span>
+                </div>
+                <div class="group-content">
+                  <el-dropdown @command="handleTemplateCommand" trigger="click" class="operation-dropdown">
+                    <el-button type="info" size="small" :icon="Setting" class="action-button">
+                      模板操作
+                      <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu class="custom-dropdown-menu">
+                        <el-dropdown-item command="export" :icon="Download">
+                          <span class="dropdown-item-text">导出JSON</span>
+                        </el-dropdown-item>
+                        <el-dropdown-item command="import" :icon="Upload">
+                          <span class="dropdown-item-text">导入模板</span>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
 
-            <div class="toolbar-section">
-              <el-button type="success" size="small" @click="goToTemplateDesigner">
-                独立设计器
-              </el-button>
-              <el-button type="warning" size="small" @click="printPreview">
-                打印预览
-              </el-button>
+                  <div class="paper-size-group">
+                    <label class="input-label">纸张大小</label>
+                    <el-select
+                      v-model="selectedPaperSize"
+                      placeholder="选择纸张"
+                      size="small"
+                      @change="handlePaperSizeChange"
+                      class="paper-select"
+                    >
+                      <el-option
+                        v-for="item in paperSizeOptions"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value"
+                      />
+                    </el-select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分隔线 -->
+              <div class="toolbar-divider"></div>
+
+              <!-- 预览和设计区域 -->
+              <div class="toolbar-group preview-group">
+                <div class="group-header">
+                  <el-icon class="group-icon"><Printer /></el-icon>
+                  <span class="group-title">预览与设计</span>
+                </div>
+                <div class="group-content">
+                  <el-button
+                    type="success"
+                    size="small"
+                    @click="goToTemplateDesigner"
+                    class="action-button designer-button"
+                  >
+                    <el-icon><Edit /></el-icon>
+                    独立设计器
+                  </el-button>
+                  <el-button
+                    type="warning"
+                    size="small"
+                    @click="printPreview"
+                    class="action-button preview-button"
+                  >
+                    <el-icon><Printer /></el-icon>
+                    打印预览
+                  </el-button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1306,29 +1382,301 @@ function goToHelpPage() {
   font-size: 14px;
 }
 
-/* 工具栏样式 */
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 8px;
+/* 推荐横幅样式 */
+.recommendation-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
   margin-bottom: 20px;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+  overflow: hidden;
+  position: relative;
+  animation: slideInFromTop 0.6s ease-out;
 }
 
-.toolbar-section {
+.recommendation-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  animation: shimmer 3s infinite;
+}
+
+.banner-content {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 20px;
+  color: white;
+  position: relative;
+  z-index: 1;
 }
 
-.toolbar-section label {
+.banner-icon {
+  font-size: 24px;
+  color: #ffd700;
+  animation: pulse 2s infinite;
+}
+
+.banner-text {
+  flex: 1;
+}
+
+.banner-text h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.banner-text p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.4;
+}
+
+.banner-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.recommend-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  width: 120px !important;
+  min-width: 120px;
+  max-width: 120px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recommend-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* 工具栏样式 */
+.toolbar {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  position: relative;
+}
+
+.toolbar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+}
+
+.toolbar-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 20px;
+  align-items: stretch;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e4e7ed;
+}
+
+.group-icon {
+  font-size: 16px;
+  color: #667eea;
+}
+
+.group-title {
   font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  letter-spacing: 0.5px;
+}
+
+.group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-label {
+  font-size: 12px;
   color: #606266;
   font-weight: 500;
-  min-width: 80px;
+  margin: 0;
+}
+
+.template-name-input {
+  width: 100%;
+  max-width: 220px;
+}
+
+.paper-size-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paper-select {
+  width: 100%;
+  max-width: 140px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  background: linear-gradient(to bottom, transparent 0%, #e4e7ed 20%, #e4e7ed 80%, transparent 100%);
+  margin: 0 20px;
+  min-height: 80px;
+}
+
+/* 按钮样式美化 */
+.action-button {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: none;
+  position: relative;
+  overflow: hidden;
+  width: 120px !important;
+  min-width: 120px;
+  max-width: 120px;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+}
+
+.action-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.action-button:hover::before {
+  left: 100%;
+}
+
+.action-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.save-button {
+  background: linear-gradient(135deg, #409eff 0%, #5dade2 100%);
+  color: white;
+}
+
+.save-button:hover {
+  background: linear-gradient(135deg, #337ecc 0%, #4a90c2 100%);
+}
+
+.designer-button {
+  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+  color: white;
+}
+
+.designer-button:hover {
+  background: linear-gradient(135deg, #529b2e 0%, #6cb04e 100%);
+}
+
+.preview-button {
+  background: linear-gradient(135deg, #e6a23c 0%, #f39c12 100%);
+  color: white;
+}
+
+.preview-button:hover {
+  background: linear-gradient(135deg, #cf7500 0%, #d68910 100%);
+}
+
+/* 下拉菜单样式 */
+.operation-dropdown {
+  width: 100%;
+}
+
+.custom-dropdown-menu {
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e4e7ed;
+  overflow: hidden;
+}
+
+.dropdown-item-text {
+  font-weight: 500;
 }
 
 /* 设计工作区样式 */
@@ -1582,18 +1930,56 @@ function goToHelpPage() {
   }
 
   .toolbar {
-    padding: 12px;
+    margin-bottom: 16px;
   }
 
-  .toolbar-section {
+  .toolbar-container {
     flex-direction: column;
-    align-items: stretch;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .toolbar-group {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .toolbar-divider {
+    width: 100%;
+    height: 1px;
+    min-height: 1px;
+    margin: 8px 0;
+    background: linear-gradient(to right, transparent 0%, #e4e7ed 20%, #e4e7ed 80%, transparent 100%);
+  }
+
+  .group-content {
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 8px;
   }
 
-  .toolbar-section label {
-    min-width: auto;
-    text-align: left;
+  .input-group,
+  .paper-size-group {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .template-name-input,
+  .paper-select {
+    max-width: none;
+  }
+
+  .action-button {
+    width: 100px !important;
+    min-width: 100px;
+    max-width: 100px;
+    flex: none;
+  }
+
+  .recommend-button {
+    width: 100px !important;
+    min-width: 100px;
+    max-width: 100px;
   }
 
   .design-workspace {
@@ -1603,6 +1989,29 @@ function goToHelpPage() {
   .template-container {
     min-height: 300px;
     margin: 10px;
+  }
+
+  .recommendation-banner {
+    margin-bottom: 16px;
+  }
+
+  .banner-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .banner-actions {
+    justify-content: center;
+  }
+
+  .banner-text h4 {
+    font-size: 15px;
+  }
+
+  .banner-text p {
+    font-size: 12px;
   }
 }
 
@@ -1628,14 +2037,87 @@ function goToHelpPage() {
     font-size: 16px;
   }
 
-  .toolbar-section {
+  .toolbar-container {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .group-content {
+    flex-direction: column;
     gap: 6px;
+  }
+
+  .action-button {
+    width: 100% !important;
+    min-width: auto;
+    max-width: none;
+  }
+
+  .group-header {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+  }
+
+  .group-title {
+    font-size: 13px;
+  }
+
+  .banner-content {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .banner-icon {
+    font-size: 20px;
+  }
+
+  .banner-text h4 {
+    font-size: 14px;
+  }
+
+  .banner-text p {
+    font-size: 11px;
+  }
+
+  .recommend-button {
+    font-size: 12px;
+    padding: 6px 12px;
+    width: 100% !important;
+    min-width: auto;
+    max-width: none;
+  }
+
+  .action-button {
+    width: 100% !important;
+    min-width: auto;
+    max-width: none;
   }
 }
 
 /* 动画效果 */
 .tab-panel {
   animation: fadeInUp 0.3s ease-out;
+}
+
+.toolbar {
+  animation: slideInDown 0.4s ease-out;
+}
+
+.toolbar-group {
+  animation: fadeInScale 0.5s ease-out;
+  animation-fill-mode: both;
+}
+
+.toolbar-group:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.toolbar-group:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.toolbar-group:nth-child(5) {
+  animation-delay: 0.3s;
 }
 
 @keyframes fadeInUp {
@@ -1647,5 +2129,64 @@ function goToHelpPage() {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 工具栏悬停效果 */
+.toolbar-group:hover {
+  transform: translateY(-2px);
+  transition: transform 0.3s ease;
+}
+
+.toolbar-group:hover .group-header {
+  color: #667eea;
+  transition: color 0.3s ease;
+}
+
+/* 输入框和选择器美化 */
+:deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+:deep(.el-input__wrapper:hover) {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.el-select .el-input__wrapper) {
+  border-radius: 8px;
+}
+
+:deep(.el-button) {
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* 下拉菜单项悬停效果 */
+:deep(.el-dropdown-menu__item:hover) {
+  background: linear-gradient(135deg, #f0f7ff 0%, #e6f4ff 100%);
+  color: #409eff;
 }
 </style>

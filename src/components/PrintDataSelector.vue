@@ -3,7 +3,7 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-section">
-        <el-button type="primary" @click="fetchData" :loading="isLoading" :icon="Refresh">
+        <el-button type="primary" @click="fetchData" :loading="isLoading" :icon="Refresh" size="default">
           获取数据
         </el-button>
         <div class="data-stats" v-if="recordList.length > 0">
@@ -53,17 +53,17 @@
           选择打印记录
         </h4>
         <div class="selection-controls">
-          <el-button-group size="small">
-            <el-button @click="selectAllRecords" :icon="Check">全选</el-button>
-            <el-button @click="selectCurrentPage" :icon="Document">当前页</el-button>
-            <el-button @click="unselectAllRecords" :icon="Close">清空</el-button>
-            <el-button @click="invertSelection" :icon="Switch">反选</el-button>
+          <el-button-group size="default">
+            <el-button @click="selectAllRecords" :icon="Check" size="default">全选</el-button>
+            <el-button @click="selectCurrentPage" :icon="Document" size="default">当前页</el-button>
+            <el-button @click="unselectAllRecords" :icon="Close" size="default">清空</el-button>
+            <el-button @click="invertSelection" :icon="Switch" size="default">反选</el-button>
           </el-button-group>
         </div>
       </div>
 
       <!-- 数据表格 -->
-      <div class="table-container">
+      <div class="data-table-wrapper">
         <el-table
           ref="dataTable"
           :data="paginatedData"
@@ -72,7 +72,7 @@
           border
           size="small"
           @selection-change="handleSelectionChange"
-          :header-cell-style="{ background: '#f8f9fa', color: '#303133' }"
+          :header-cell-style="{ background: 'transparent', color: 'white' }"
         >
           <el-table-column type="selection" width="50" />
           <el-table-column
@@ -121,6 +121,7 @@
           :disabled="selectedRows.length === 0"
           :icon="Printer"
           class="action-btn"
+          size="default"
         >
           打印选中数据
         </el-button>
@@ -130,6 +131,7 @@
           :disabled="selectedRows.length === 0"
           :icon="Download"
           class="action-btn"
+          size="default"
         >
           导出PDF
         </el-button>
@@ -139,6 +141,7 @@
           :disabled="selectedRows.length === 0"
           :icon="Upload"
           class="action-btn"
+          size="default"
         >
           导出至多维表格
         </el-button>
@@ -148,7 +151,7 @@
     <!-- 空状态 -->
     <div v-if="!isLoading && recordList.length === 0" class="empty-state">
       <el-empty description="暂无数据">
-        <el-button type="primary" @click="fetchData" :icon="Refresh">
+        <el-button type="primary" @click="fetchData" :icon="Refresh" size="default">
           获取数据
         </el-button>
       </el-empty>
@@ -158,45 +161,110 @@
     <el-dialog
       v-model="exportToBaseDialogVisible"
       title="导出至多维表格"
-      width="500px"
+      width="520px"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
+      class="export-dialog"
+      align-center
     >
-      <div v-if="!isExporting">
-        <p>请选择要将文件导出到的附件字段:</p>
-        <el-select v-model="selectedAttachmentField" placeholder="选择附件字段" style="width: 100%">
-          <el-option
-            v-for="field in attachmentFields"
-            :key="field.id"
-            :label="field.name"
-            :value="field.id"
-          />
-        </el-select>
-        
-        <div class="format-selection" style="margin-top: 15px;">
-          <p>请选择导出格式:</p>
-          <el-radio-group v-model="exportFormat">
-            <el-radio label="pdf">PDF格式</el-radio>
-            <el-radio label="jpeg">JPEG图片格式</el-radio>
+      <div v-if="!isExporting" class="export-dialog-content">
+        <div class="field-selection-section">
+          <div class="section-header">
+            <el-icon class="section-icon"><Upload /></el-icon>
+            <h4>选择附件字段</h4>
+          </div>
+          <p class="section-description">请选择要将文件导出到的附件字段:</p>
+          <el-select
+            v-model="selectedAttachmentField"
+            placeholder="选择附件字段"
+            class="field-selector"
+            size="large"
+          >
+            <el-option
+              v-for="field in attachmentFields"
+              :key="field.id"
+              :label="field.name"
+              :value="field.id"
+            />
+          </el-select>
+        </div>
+
+        <div class="format-selection-section">
+          <div class="section-header">
+            <el-icon class="section-icon"><Document /></el-icon>
+            <h4>选择导出格式</h4>
+          </div>
+          <p class="section-description">请选择导出格式:</p>
+          <el-radio-group v-model="exportFormat" class="format-radio-group">
+            <el-radio label="pdf" class="format-radio">
+              <div class="radio-content">
+                <strong>PDF格式</strong>
+                <span class="radio-desc">推荐格式，保持原始质量</span>
+              </div>
+            </el-radio>
+            <el-radio label="jpeg" class="format-radio">
+              <div class="radio-content">
+                <strong>JPEG图片格式</strong>
+                <span class="radio-desc">图片格式，便于预览</span>
+              </div>
+            </el-radio>
           </el-radio-group>
         </div>
-        
-        <p class="export-tip">注意: 每条记录将生成一个单独的文件，并上传到对应记录的附件字段中</p>
-        <p class="export-tip">注意: JPEG格式会使用浏览器进行转换，可能影响图片质量和系统性能，建议根据实际需求选择合适的格式</p>
+
+        <div class="tips-section">
+          <div class="tip-item">
+            <el-icon class="tip-icon"><InfoFilled /></el-icon>
+            <span>每条记录将生成一个单独的文件，并上传到对应记录的附件字段中</span>
+          </div>
+          <div class="tip-item">
+            <el-icon class="tip-icon"><WarningFilled /></el-icon>
+            <span>JPEG格式会使用浏览器进行转换，可能影响图片质量和系统性能，建议根据实际需求选择合适的格式</span>
+          </div>
+        </div>
       </div>
       
-      <div v-else class="export-progress">
-        <p>正在导出至多维表格 ({{ exportCurrent }}/{{ exportTotal }})</p>
-        <el-progress :percentage="exportProgress" :format="percent => `${percent}%`" />
+      <div v-else class="export-progress-container">
+        <div class="progress-header">
+          <el-icon class="progress-icon"><Loading /></el-icon>
+          <h4>正在导出至多维表格</h4>
+        </div>
+        <div class="progress-info">
+          <span class="progress-text">进度: {{ exportCurrent }}/{{ exportTotal }}</span>
+          <span class="progress-percentage">{{ Math.round(exportProgress) }}%</span>
+        </div>
+        <el-progress
+          :percentage="exportProgress"
+          :stroke-width="8"
+          :show-text="false"
+          class="custom-progress"
+        />
+        <p class="progress-tip">请耐心等待，正在处理您的数据...</p>
       </div>
       
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="exportToBaseDialogVisible = false" :disabled="isExporting">取消</el-button>
-          <el-button type="primary" @click="executeExport" :loading="isExporting" :disabled="isExporting">
+        <div class="dialog-footer">
+          <el-button
+            @click="exportToBaseDialogVisible = false"
+            :disabled="isExporting"
+            class="cancel-btn"
+            size="default"
+          >
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            @click="executeExport"
+            :loading="isExporting"
+            :disabled="isExporting"
+            class="export-btn"
+            size="default"
+          >
+            <template #icon v-if="!isExporting">
+              <el-icon><Upload /></el-icon>
+            </template>
             {{ isExporting ? '导出中...' : '开始导出' }}
           </el-button>
-        </span>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -211,7 +279,7 @@ import {
 } from 'element-plus';
 import {
   Refresh, Document, Check, Setting, List, Close, Switch, Operation,
-  Printer, Download, Upload
+  Printer, Download, Upload, InfoFilled, WarningFilled, Loading
 } from '@element-plus/icons-vue';
 // @ts-ignore
 import { fetchVisibleFields } from '@/utils/fieldFetcher';
@@ -757,9 +825,108 @@ async function generatePDF(printItem) {
   flex-wrap: wrap;
 }
 
+/* 统一按钮样式 */
+:deep(.el-button) {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+:deep(.el-button--primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+:deep(.el-button--primary:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+:deep(.el-button--primary.is-loading) {
+  transform: none;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+:deep(.el-button--success) {
+  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+}
+
+:deep(.el-button--success:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(103, 194, 58, 0.4);
+}
+
+:deep(.el-button--warning) {
+  background: linear-gradient(135deg, #e6a23c 0%, #d48806 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.3);
+}
+
+:deep(.el-button--warning:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(230, 162, 60, 0.4);
+}
+
+:deep(.el-button--info) {
+  background: linear-gradient(135deg, #909399 0%, #73767a 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 12px rgba(144, 147, 153, 0.3);
+}
+
+:deep(.el-button--info:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(144, 147, 153, 0.4);
+}
+
+:deep(.el-button:disabled) {
+  transform: none !important;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .data-stats {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  align-items: center;
+}
+
+:deep(.data-stats .el-tag) {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+:deep(.data-stats .el-tag.el-tag--info) {
+  background: linear-gradient(135deg, #909399 0%, #606266 100%);
+  color: white;
+}
+
+:deep(.data-stats .el-tag.el-tag--success) {
+  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
+  color: white;
+}
+
+:deep(.data-stats .el-tag:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* 卡片样式 */
@@ -804,32 +971,73 @@ async function generatePDF(printItem) {
 /* 选择控制样式 */
 .selection-controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
-/* 表格容器样式 */
-.table-container {
+:deep(.selection-controls .el-button-group .el-button) {
+  background: white;
+  border: 1px solid #dcdfe6;
+  color: #606266;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+:deep(.selection-controls .el-button-group .el-button:hover) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: #667eea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+:deep(.selection-controls .el-button-group .el-button:first-child) {
+  border-radius: 8px 0 0 8px;
+}
+
+:deep(.selection-controls .el-button-group .el-button:last-child) {
+  border-radius: 0 8px 8px 0;
+}
+
+:deep(.selection-controls .el-button-group .el-button:not(:first-child):not(:last-child)) {
+  border-radius: 0;
+}
+
+/* 数据表格容器样式 */
+.data-table-wrapper {
   margin: 0 20px;
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  background: white;
+  border: 1px solid #f0f2f5;
 }
 
 .data-table {
-  border-radius: 8px;
+  border-radius: 12px;
+  border: none;
+  background: white;
 }
 
 .field-value {
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #303133;
+  font-weight: 400;
+  padding: 2px 0;
 }
 
 /* 分页样式 */
 .pagination-container {
-  padding: 15px 20px 20px 20px;
+  padding: 20px;
   display: flex;
   justify-content: center;
-  background: #f8f9fa;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-top: 1px solid #e9ecef;
 }
 
 /* 操作按钮样式 */
@@ -842,49 +1050,508 @@ async function generatePDF(printItem) {
 
 .action-btn {
   justify-content: flex-start;
-  padding: 12px 20px;
-  height: auto;
+  height: 40px;
+  padding: 0 20px;
   font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.3s ease;
 }
 
 /* 空状态样式 */
 .empty-state {
   margin: 40px 15px;
   text-align: center;
+  background: white;
+  border-radius: 12px;
+  padding: 40px 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+:deep(.empty-state .el-empty__description) {
+  color: #909399;
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+
+:deep(.empty-state .el-button) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  height: 40px;
+  padding: 0 24px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+:deep(.empty-state .el-button:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
 /* 表格深度样式 */
 :deep(.el-table) {
-  border-radius: 8px;
+  border-radius: 16px;
+  border: none;
+  box-shadow: none;
 }
 
 :deep(.el-table__header) {
   font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
 }
 
-:deep(.el-table__row.selected) {
-  background-color: #ecf5ff;
+:deep(.el-table__header-wrapper) {
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
 }
 
-:deep(.el-table__row:hover) {
-  background-color: #f5f7fa;
+:deep(.el-table__header th) {
+  background: transparent !important;
+  color: white !important;
+  border: none !important;
+  padding: 18px 12px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  text-align: left;
+  letter-spacing: 0.5px;
 }
 
-/* 对话框样式 */
-.export-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 10px;
+:deep(.el-table__header th:first-child) {
+  border-radius: 16px 0 0 0;
+}
+
+:deep(.el-table__header th:last-child) {
+  border-radius: 0 16px 0 0;
+}
+
+:deep(.el-table__body-wrapper) {
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table__row) {
+  transition: all 0.3s ease;
+  border: none;
+}
+
+:deep(.el-table__row td) {
+  border: none !important;
+  padding: 16px 12px !important;
+  font-size: 14px;
+  color: #303133;
+  background: white;
+  border-bottom: 1px solid #f5f7fa !important;
+}
+
+:deep(.el-table__row:nth-child(even) td) {
+  background: #fafbfc;
+}
+
+:deep(.el-table__row.selected td) {
+  background: rgba(102, 126, 234, 0.08) !important;
+  color: #667eea !important;
+  font-weight: 500;
+  border-left: 3px solid #667eea !important;
+}
+
+:deep(.data-table .el-table__row:hover td) {
+  background: rgba(102, 126, 234, 0.04) !important;
+  transition: all 0.2s ease;
+}
+
+:deep(.data-table .el-table__row:hover) {
+  transform: none;
+  box-shadow: none;
+}
+
+:deep(.data-table .el-table__row.selected:hover td) {
+  background: rgba(102, 126, 234, 0.12) !important;
+}
+
+:deep(.el-checkbox) {
+  transform: scale(1.1);
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+}
+
+:deep(.el-table__empty-block) {
+  background: white;
+  border-radius: 0 0 16px 16px;
+}
+
+/* 分页组件样式优化 */
+:deep(.el-pagination) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+:deep(.el-pagination .btn-prev),
+:deep(.el-pagination .btn-next) {
+  background: white;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  color: #606266;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.el-pagination .btn-prev:hover),
+:deep(.el-pagination .btn-next:hover) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: #667eea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+:deep(.el-pagination .el-pager li) {
+  background: white;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  color: #606266;
+  margin: 0 2px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.el-pagination .el-pager li:hover) {
+  background: linear-gradient(135deg, #f0f2f5 0%, #e9ecef 100%);
+  color: #303133;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+:deep(.el-pagination .el-pager li.is-active) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: #667eea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+:deep(.el-pagination .el-select .el-input__wrapper) {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+:deep(.el-pagination .el-select .el-input__wrapper:hover) {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+/* 导出对话框样式 */
+:deep(.export-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  border: none;
+}
+
+:deep(.export-dialog .el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+}
+
+:deep(.export-dialog .el-dialog__header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px 28px;
+  border-radius: 0;
+  margin: 0;
+  border: none;
+}
+
+:deep(.export-dialog .el-dialog__title) {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+:deep(.export-dialog .el-dialog__headerbtn) {
+  top: 24px;
+  right: 28px;
+}
+
+:deep(.export-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: white;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  transition: all 0.3s ease;
+}
+
+:deep(.export-dialog .el-dialog__headerbtn .el-dialog__close:hover) {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(90deg);
+}
+
+:deep(.export-dialog .el-dialog__body) {
+  padding: 28px;
+  background: #fafbfc;
+  border: none;
+}
+
+:deep(.export-dialog .el-dialog__footer) {
+  padding: 0;
+  border: none;
+}
+
+.export-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.field-selection-section,
+.format-selection-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.section-icon {
+  color: #667eea;
+  font-size: 18px;
+}
+
+.section-header h4 {
+  margin: 0;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.section-description {
+  margin: 0 0 16px 0;
+  color: #606266;
+  font-size: 14px;
   line-height: 1.5;
 }
 
-.export-progress {
-  text-align: center;
-  padding: 20px 0;
+.field-selector {
+  width: 100%;
 }
 
-.format-selection {
-  margin-top: 15px;
+:deep(.field-selector .el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+:deep(.field-selector .el-input__wrapper:hover) {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.format-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.format-radio {
+  margin: 0;
+  padding: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.format-radio:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+:deep(.format-radio.is-checked) {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e6f3ff 100%);
+}
+
+.radio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.radio-content strong {
+  color: #303133;
+  font-size: 14px;
+}
+
+.radio-desc {
+  color: #909399;
+  font-size: 12px;
+}
+
+.tips-section {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.tip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tip-item:last-child {
+  margin-bottom: 0;
+}
+
+.tip-icon {
+  color: #fa8c16;
+  font-size: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.tip-item span {
+  color: #8c4a00;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.export-progress-container {
+  text-align: center;
+  padding: 40px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.progress-icon {
+  color: #667eea;
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.progress-header h4 {
+  margin: 0;
+  color: #303133;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 0 8px;
+}
+
+.progress-text {
+  color: #606266;
+  font-size: 14px;
+}
+
+.progress-percentage {
+  color: #667eea;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.custom-progress {
+  margin-bottom: 16px;
+}
+
+:deep(.custom-progress .el-progress-bar__outer) {
+  background: #f0f2f5;
+  border-radius: 8px;
+}
+
+:deep(.custom-progress .el-progress-bar__inner) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+}
+
+.progress-tip {
+  margin: 0;
+  color: #909399;
+  font-size: 14px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.cancel-btn {
+  background: white;
+  border: 1px solid #dcdfe6;
+  color: #606266;
+  border-radius: 8px;
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn:hover {
+  background: #f5f7fa;
+  border-color: #c0c4cc;
+}
+
+.export-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
 /* 响应式设计 */
@@ -913,12 +1580,27 @@ async function generatePDF(printItem) {
     margin: 12px 15px 15px 15px;
   }
 
-  .table-container {
+  .data-table-wrapper {
     margin: 0 15px;
+    border-radius: 12px;
   }
 
   .pagination-container {
-    padding: 12px 15px 15px 15px;
+    padding: 15px;
+  }
+
+  :deep(.el-table__header th) {
+    padding: 12px 8px !important;
+    font-size: 13px !important;
+  }
+
+  :deep(.el-table__row td) {
+    padding: 12px 8px !important;
+    font-size: 13px;
+  }
+
+  .field-value {
+    font-size: 13px;
   }
 
   .button-grid {
@@ -949,7 +1631,20 @@ async function generatePDF(printItem) {
   }
 
   .action-btn {
-    padding: 10px 15px;
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  :deep(.el-button) {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  :deep(.selection-controls .el-button-group .el-button) {
+    height: 36px;
+    padding: 0 12px;
     font-size: 13px;
   }
 }
