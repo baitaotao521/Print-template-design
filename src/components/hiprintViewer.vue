@@ -12,7 +12,8 @@ import PrintDataSelector from './PrintDataSelector.vue';
 import FieldInfoViewer from './FieldInfoViewer.vue';
 import TemplateManager from './TemplateManager.vue';
 import $ from 'jquery';
-import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
+import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOption, ElDialog, ElForm, ElFormItem, ElInput, ElDropdown, ElDropdownMenu, ElDropdownItem, ElIcon } from 'element-plus';
+import { Printer, QuestionFilled, WarningFilled, Loading, Edit, DataBoard, FolderOpened, InfoFilled, Setting, Download, Upload } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import { saveTemplate, getTemplate, getAllTemplates, deleteTemplate } from '@/utils/indexedDBHelper';
 
@@ -55,6 +56,14 @@ const customPaperForm = ref({
 const templateList = ref([]);
 const currentTemplateId = ref('');
 const templateName = ref('');
+
+// 标签页配置
+const tabs = ref([
+  { name: 'design', label: '设计模板', icon: 'Edit' },
+  { name: 'print', label: '数据打印', icon: 'Printer' },
+  { name: 'template-manager', label: '模板管理', icon: 'FolderOpened' },
+  { name: 'field-info', label: '字段信息', icon: 'DataBoard' }
+]);
 
 onMounted(async () => {
   try {
@@ -756,13 +765,49 @@ function handleLoadTemplateFromManager(templateData) {
       ElMessage.warning('模板数据为空');
       return;
     }
-    
+
+    console.log('从模板管理器加载模板数据:', templateData);
+
+    // 验证并补充必要的属性
+    let validatedData = templateData;
+
+    // 如果数据是字符串，尝试解析
+    if (typeof templateData === 'string') {
+      validatedData = JSON.parse(templateData);
+    }
+
+    // 确保模板数据包含必要的属性
+    const completeData = {
+      ...validatedData,
+      panels: validatedData.panels || [],
+      width: validatedData.width || 210,
+      height: validatedData.height || 297,
+      paperType: validatedData.paperType || 'A4',
+      paperHeader: validatedData.paperHeader || 0,
+      paperFooter: validatedData.paperFooter || 0,
+      printElements: validatedData.printElements || []
+    };
+
+    // 确保panels数组中的每个面板都有必要的属性
+    if (completeData.panels && completeData.panels.length > 0) {
+      completeData.panels = completeData.panels.map(panel => ({
+        ...panel,
+        printElements: panel.printElements || [],
+        width: panel.width || completeData.width,
+        height: panel.height || completeData.height,
+        paperHeader: panel.paperHeader !== undefined ? panel.paperHeader : completeData.paperHeader,
+        paperFooter: panel.paperFooter !== undefined ? panel.paperFooter : completeData.paperFooter
+      }));
+    }
+
+    console.log('验证后的模板数据:', completeData);
+
     // 切换到设计标签页
     activeTab.value = 'design';
-    
+
     // 导入模板
-    importTemplate(templateData);
-    
+    importTemplate(completeData);
+
     ElMessage.success('模板已成功加载到设计器');
   } catch (error) {
     console.error('加载模板失败:', error);
@@ -828,99 +873,200 @@ function goToHelpPage() {
 
 <template>
   <div class="hiprint-viewer">
-    <div v-if="message" class="message">{{ message }}</div>
-    <div v-if="recordsLoadingMessage" class="records-loading-message">{{ recordsLoadingMessage }}</div>
-    <div v-if="isLoading" class="loading-overlay">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">加载中...</div>
-    </div>
-    
-    <div class="hiprint-container" v-show="!isLoading">
-      <div class="tabs-header">
-        <el-tabs v-model="activeTab" class="hiprint-tabs">
-          <el-tab-pane label="设计模板" name="design"></el-tab-pane>
-          <el-tab-pane label="数据打印" name="print"></el-tab-pane>
-          <el-tab-pane label="模板管理" name="template-manager"></el-tab-pane>
-          <el-tab-pane label="字段信息" name="field-info"></el-tab-pane>
-        </el-tabs>
-        <el-button type="primary" @click="goToHelpPage" size="small">使用帮助</el-button>
+    <!-- 页面头部 -->
+    <div class="viewer-header">
+      <div class="header-content">
+        <div class="header-left">
+          <el-icon class="header-icon"><Printer /></el-icon>
+          <div class="header-text">
+            <h1>打印模板设计系统</h1>
+            <p class="header-subtitle">专业的模板设计与数据打印工具</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <el-button @click="goToHelpPage" type="primary" size="small" :icon="QuestionFilled">
+            使用帮助
+          </el-button>
+        </div>
       </div>
-      
+    </div>
+
+    <!-- 状态消息 -->
+    <div v-if="message" class="status-message error">
+      <el-icon><WarningFilled /></el-icon>
+      <span>{{ message }}</span>
+    </div>
+    <div v-if="recordsLoadingMessage" class="status-message info">
+      <el-icon><Loading /></el-icon>
+      <span>{{ recordsLoadingMessage }}</span>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div v-if="isLoading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">系统初始化中...</div>
+        <div class="loading-subtitle">请稍候，正在加载组件和数据</div>
+      </div>
+    </div>
+
+    <div class="hiprint-container" v-show="!isLoading">
+      <!-- 导航标签 -->
+      <div class="nav-tabs">
+        <div class="tab-buttons">
+          <button
+            v-for="tab in tabs"
+            :key="tab.name"
+            :class="['tab-button', { active: activeTab === tab.name }]"
+            @click="activeTab = tab.name"
+          >
+            <el-icon>
+              <component :is="tab.icon" />
+            </el-icon>
+            <span>{{ tab.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 标签内容 -->
       <div class="tab-content">
-        <template v-if="activeTab === 'design'">
-          <div class="design-container">
-            <!-- 左侧：存放可拖拽元素的容器 -->
-            <div id="provider-container" class="provider-container"></div>
-            
-            <!-- 中间：存放元素面板的容器 -->
-            <div class="template-wrapper">
-              <div class="template-actions">
-                <!-- 左侧：模板操作按钮组 -->
-                <div class="action-group">
-                  <el-input
-                    v-model="templateName"
-                    placeholder="输入模板名称"
-                    style="width: 150px; margin-right: 10px;"
-                  />
-                  <el-button type="primary" size="small" @click="saveCurrentTemplate">保存模板</el-button>
-                  
-                  <!-- 使用下拉菜单替换原来的多个按钮 -->
-                  <el-dropdown @command="handleTemplateCommand" trigger="click">
-                    <el-button type="primary" size="small">
-                      模板操作<i class="el-icon-arrow-down el-icon--right"></i>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="export">导出JSON</el-dropdown-item>
-                        <el-dropdown-item command="import">导入模板</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-                
-                <!-- 右侧：纸张和打印操作按钮组 -->
-                <div class="action-group">
-                <el-select v-model="selectedPaperSize" placeholder="选择纸张大小" size="small" @change="handlePaperSizeChange" style="width: 120px; margin-right: 10px;">
-                  <el-option
-                    v-for="item in paperSizeOptions"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value"
-                  />
-                </el-select>
-                  <el-button type="success" size="small" @click="goToTemplateDesigner">独立设计器(推荐使用)</el-button>
-                <el-button type="success" size="small" @click="printPreview">打印预览</el-button>
-                <el-button type="warning" size="small" @click="exportToPDF">导出PDF</el-button>
+        <!-- 设计模板 -->
+        <div v-if="activeTab === 'design'" class="tab-panel">
+          <div class="panel-header">
+            <h3>
+              <el-icon><Edit /></el-icon>
+              模板设计
+            </h3>
+            <p>拖拽元素到画布，设计您的打印模板</p>
+          </div>
+
+          <!-- 工具栏 -->
+          <div class="toolbar">
+            <div class="toolbar-section">
+              <label>模板名称：</label>
+              <el-input
+                v-model="templateName"
+                placeholder="输入模板名称"
+                size="small"
+                style="width: 200px;"
+              />
+              <el-button type="primary" size="small" @click="saveCurrentTemplate" :icon="Download">
+                保存模板
+              </el-button>
+            </div>
+
+            <div class="toolbar-section">
+              <el-dropdown @command="handleTemplateCommand" trigger="click">
+                <el-button type="info" size="small" :icon="Setting">
+                  模板操作
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="export" :icon="Download">导出JSON</el-dropdown-item>
+                    <el-dropdown-item command="import" :icon="Upload">导入模板</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-select
+                v-model="selectedPaperSize"
+                placeholder="纸张大小"
+                size="small"
+                @change="handlePaperSizeChange"
+                style="width: 100px;"
+              >
+                <el-option
+                  v-for="item in paperSizeOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="toolbar-section">
+              <el-button type="success" size="small" @click="goToTemplateDesigner">
+                独立设计器
+              </el-button>
+              <el-button type="warning" size="small" @click="printPreview">
+                打印预览
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 设计区域 -->
+          <div class="design-workspace">
+            <!-- 元素库 -->
+            <div class="elements-panel">
+              <div class="panel-title">
+                <el-icon><Setting /></el-icon>
+                <span>元素库</span>
               </div>
+              <div id="provider-container" class="provider-container"></div>
+            </div>
+
+            <!-- 画布区域 -->
+            <div class="canvas-panel">
+              <div class="canvas-header">
+                <span>设计画布</span>
               </div>
-              
               <div id="hiprint-printTemplate" class="template-container"></div>
             </div>
-            
-            <!-- 右侧：点击元素/面板时，渲染参数的容器 -->
-            <div id="PrintElementOptionSetting" class="setting-container"></div>
+
+            <!-- 属性面板 -->
+            <div class="properties-panel">
+              <div class="panel-title">
+                <el-icon><Setting /></el-icon>
+                <span>属性设置</span>
+              </div>
+              <div id="PrintElementOptionSetting" class="setting-container"></div>
+            </div>
           </div>
-        </template>
-        
-        <template v-else-if="activeTab === 'print'">
-          <PrintDataSelector 
+        </div>
+
+        <!-- 数据打印 -->
+        <div v-else-if="activeTab === 'print'" class="tab-panel">
+          <div class="panel-header">
+            <h3>
+              <el-icon><Printer /></el-icon>
+              数据打印
+            </h3>
+            <p>选择数据并执行打印操作</p>
+          </div>
+          <PrintDataSelector
             :hiprintTemplate="hiprintTemplate"
             :initialFields="fields"
             :initialRecords="recordsData"
             @print="handlePrint"
           />
-        </template>
+        </div>
 
-        <template v-else-if="activeTab === 'template-manager'">
-          <TemplateManager 
+        <!-- 模板管理 -->
+        <div v-else-if="activeTab === 'template-manager'" class="tab-panel">
+          <div class="panel-header">
+            <h3>
+              <el-icon><FolderOpened /></el-icon>
+              模板管理
+            </h3>
+            <p>管理您的打印模板</p>
+          </div>
+          <TemplateManager
             :hiprintTemplate="hiprintTemplate"
             @load-template="handleLoadTemplateFromManager"
           />
-        </template>
+        </div>
 
-        <template v-else-if="activeTab === 'field-info'">
+        <!-- 字段信息 -->
+        <div v-else-if="activeTab === 'field-info'" class="tab-panel">
+          <div class="panel-header">
+            <h3>
+              <el-icon><DataBoard /></el-icon>
+              字段信息
+            </h3>
+            <p>查看当前表格的字段信息</p>
+          </div>
           <FieldInfoViewer />
-        </template>
+        </div>
       </div>
     </div>
     
@@ -954,60 +1100,122 @@ function goToHelpPage() {
 </template>
 
 <style scoped>
+/* 基础样式 */
 .hiprint-viewer {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  padding: 15px;
   position: relative;
 }
 
-.tabs-header {
+/* 页面头部样式 */
+.viewer-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 15px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 15px;
 }
 
-.tabs-actions {
+.header-left {
   display: flex;
   align-items: center;
+  gap: 15px;
 }
 
-.hiprint-tabs {
-  flex: 1;
+.header-icon {
+  font-size: 32px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
-.message {
+.header-text h1 {
+  margin: 0 0 5px 0;
+  font-size: 20px;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 300;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* 状态消息样式 */
+.status-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.status-message.error {
+  background-color: #fef0f0;
   color: #f56c6c;
-  margin-bottom: 10px;
+  border: 1px solid #fbc4c4;
 }
 
+.status-message.info {
+  background-color: #f0f9eb;
+  color: #67c23a;
+  border: 1px solid #c2e7b0;
+}
+
+/* 加载遮罩样式 */
 .loading-overlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.95);
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 1000;
 }
 
+.loading-content {
+  text-align: center;
+}
+
 .loading-spinner {
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #409eff;
+  border-top: 4px solid #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin-bottom: 10px;
+  margin: 0 auto 15px;
 }
 
 .loading-text {
+  color: #303133;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.loading-subtitle {
   color: #606266;
   font-size: 14px;
 }
@@ -1017,63 +1225,170 @@ function goToHelpPage() {
   100% { transform: rotate(360deg); }
 }
 
+/* 主容器样式 */
 .hiprint-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  height: calc(100% - 40px);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
+/* 导航标签样式 */
+.nav-tabs {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.tab-buttons {
+  display: flex;
+  overflow-x: auto;
+  padding: 0;
+}
+
+.tab-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 15px 20px;
+  border: none;
+  background: transparent;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+  border-bottom: 3px solid transparent;
+}
+
+.tab-button:hover {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+}
+
+.tab-button.active {
+  background: white;
+  color: #667eea;
+  border-bottom-color: #667eea;
+  font-weight: 600;
+}
+
+.tab-button .el-icon {
+  font-size: 18px;
+}
+
+.tab-button span {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 标签内容样式 */
 .tab-content {
-  height: calc(100% - 40px);
-  overflow: auto;
+  min-height: 500px;
 }
 
-.design-container {
+.tab-panel {
+  padding: 20px;
+}
+
+.panel-header {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.panel-header h3 {
   display: flex;
-  gap: 20px;
-  height: 100%;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 5px 0;
+  font-size: 18px;
+  color: #303133;
+  font-weight: 600;
 }
 
-.provider-container {
-  width: 260px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 12px;
-  background-color: #f5f7fa;
-  overflow-y: auto;
+.panel-header p {
+  margin: 0;
+  color: #606266;
+  font-size: 14px;
 }
 
-.template-wrapper {
-  flex: 1;
+/* 工具栏样式 */
+.toolbar {
   display: flex;
   flex-direction: column;
+  gap: 15px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 20px;
 }
 
-.template-actions {
-  padding: 10px;
-  background-color: #f5f7fa;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px 4px 0 0;
-  display: flex;
-  justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.action-group {
+.toolbar-section {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-section label {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+/* 设计工作区样式 */
+.design-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-height: 600px;
+}
+
+/* 面板样式 */
+.elements-panel,
+.canvas-panel,
+.properties-panel {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.panel-title,
+.canvas-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+}
+
+.provider-container {
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: #fafbfc;
 }
 
 .template-container {
-  flex: 1;
-  border: 1px solid #dcdfe6;
-  border-top: none;
-  border-radius: 0 0 4px 4px;
+  min-height: 400px;
   background-color: #fff;
-  overflow: auto;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  border: 2px dashed #e9ecef;
+  margin: 15px;
+  border-radius: 8px;
+  position: relative;
+}
+
+.setting-container {
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: #fafbfc;
 }
 
 /* 拖拽元素组样式 */
@@ -1246,5 +1561,97 @@ function goToHelpPage() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .hiprint-viewer {
+    padding: 10px;
+  }
+
+  .header-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .header-text h1 {
+    font-size: 18px;
+  }
+
+  .tab-buttons {
+    justify-content: center;
+  }
+
+  .tab-button {
+    min-width: 70px;
+    padding: 12px 15px;
+  }
+
+  .toolbar {
+    padding: 12px;
+  }
+
+  .toolbar-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .toolbar-section label {
+    min-width: auto;
+    text-align: left;
+  }
+
+  .design-workspace {
+    gap: 12px;
+  }
+
+  .template-container {
+    min-height: 300px;
+    margin: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-text h1 {
+    font-size: 16px;
+  }
+
+  .header-subtitle {
+    font-size: 12px;
+  }
+
+  .tab-button {
+    min-width: 60px;
+    padding: 10px 8px;
+  }
+
+  .tab-button span {
+    font-size: 11px;
+  }
+
+  .panel-header h3 {
+    font-size: 16px;
+  }
+
+  .toolbar-section {
+    gap: 6px;
+  }
+}
+
+/* 动画效果 */
+.tab-panel {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

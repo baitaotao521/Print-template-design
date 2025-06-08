@@ -1,17 +1,40 @@
 <template>
   <div class="print-data-selector">
-    <h3>打印数据选择</h3>
-    
-    <!-- 字段选择区域 - 改为下拉多选框 -->
-    <div class="field-selection">
-      <h4>选择表格显示字段</h4>
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-section">
+        <el-button type="primary" @click="fetchData" :loading="isLoading" :icon="Refresh">
+          获取数据
+        </el-button>
+        <div class="data-stats" v-if="recordList.length > 0">
+          <el-tag type="info" size="small">
+            <el-icon><Document /></el-icon>
+            总记录: {{ recordList.length }}
+          </el-tag>
+          <el-tag type="success" size="small" v-if="selectedRows.length > 0">
+            <el-icon><Check /></el-icon>
+            已选择: {{ selectedRows.length }}
+          </el-tag>
+        </div>
+      </div>
+    </div>
+
+    <!-- 字段选择区域 -->
+    <div class="field-selection-card">
+      <div class="card-header">
+        <h4>
+          <el-icon><Setting /></el-icon>
+          选择显示字段
+        </h4>
+        <p>选择要在数据表格中显示的字段</p>
+      </div>
       <el-select
         v-model="selectedFields"
         multiple
         collapse-tags
         collapse-tags-tooltip
         placeholder="请选择要显示的字段"
-        style="width: 100%"
+        class="field-select"
       >
         <el-option
           v-for="field in fields"
@@ -21,63 +44,116 @@
         />
       </el-select>
     </div>
-    
+
     <!-- 数据预览区域 -->
-    <div class="data-preview" v-if="recordList.length > 0">
-      <div class="data-preview-header">
-        <h4>选择打印记录</h4>
-        <div class="record-count">
-          总记录: <span class="count-number">{{ recordList.length }}</span> | 
-          已选择: <span class="count-number">{{ selectedRows.length }}</span>
-          <el-button type="text" size="small" @click="selectAllRecords" class="select-btn">全选</el-button>
-          <el-button type="text" size="small" @click="selectCurrentPage" class="select-btn">选择当前页</el-button>
-          <el-button type="text" size="small" @click="unselectAllRecords" class="select-btn">取消全选</el-button>
-          <el-button type="text" size="small" @click="invertSelection" class="select-btn">反选</el-button>
+    <div class="data-preview-card" v-if="recordList.length > 0">
+      <div class="card-header">
+        <h4>
+          <el-icon><List /></el-icon>
+          选择打印记录
+        </h4>
+        <div class="selection-controls">
+          <el-button-group size="small">
+            <el-button @click="selectAllRecords" :icon="Check">全选</el-button>
+            <el-button @click="selectCurrentPage" :icon="Document">当前页</el-button>
+            <el-button @click="unselectAllRecords" :icon="Close">清空</el-button>
+            <el-button @click="invertSelection" :icon="Switch">反选</el-button>
+          </el-button-group>
         </div>
       </div>
-      <el-table 
-        ref="dataTable"
-        :data="paginatedData" 
-        style="width: 100%" 
-        height="400px"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="55" />
-        <el-table-column 
-          v-for="field in displayFields" 
-          :key="field.id" 
-          :prop="field.id" 
-          :label="field.name"
-          :width="field.width || 120"
+
+      <!-- 数据表格 -->
+      <div class="table-container">
+        <el-table
+          ref="dataTable"
+          :data="paginatedData"
+          class="data-table"
+          stripe
+          border
+          size="small"
+          @selection-change="handleSelectionChange"
+          :header-cell-style="{ background: '#f8f9fa', color: '#303133' }"
         >
-          <template #default="scope">
-            {{ formatValue(scope.row[field.id]) }}
-          </template>
-        </el-table-column>
-      </el-table>
-      
+          <el-table-column type="selection" width="50" />
+          <el-table-column
+            v-for="field in displayFields"
+            :key="field.id"
+            :prop="field.id"
+            :label="field.name"
+            :min-width="field.width || 120"
+            show-overflow-tooltip
+          >
+            <template #default="scope">
+              <span class="field-value">{{ formatValue(scope.row[field.id]) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <!-- 分页控件 -->
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100, 200]"
-          layout="total, sizes, prev, pager, next, jumper"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
           :total="recordList.length"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
+          small
         />
       </div>
     </div>
-    
+
     <!-- 操作按钮区域 -->
-    <div class="action-buttons">
-      <el-button type="primary" @click="fetchData" :loading="isLoading">获取数据</el-button>
-      <el-button type="success" @click="printSelected" :disabled="selectedRows.length === 0">打印选中数据</el-button>
-      <el-button type="warning" @click="exportPDF" :disabled="selectedRows.length === 0">导出PDF</el-button>
-      <el-button type="info" @click="exportToBase" :disabled="selectedRows.length === 0">导出至多维表格</el-button>
+    <div class="action-buttons-card">
+      <div class="card-header">
+        <h4>
+          <el-icon><Operation /></el-icon>
+          打印操作
+        </h4>
+        <p>选择操作类型并执行打印</p>
+      </div>
+      <div class="button-grid">
+        <el-button
+          type="success"
+          @click="printSelected"
+          :disabled="selectedRows.length === 0"
+          :icon="Printer"
+          class="action-btn"
+        >
+          打印选中数据
+        </el-button>
+        <el-button
+          type="warning"
+          @click="exportPDF"
+          :disabled="selectedRows.length === 0"
+          :icon="Download"
+          class="action-btn"
+        >
+          导出PDF
+        </el-button>
+        <el-button
+          type="info"
+          @click="exportToBase"
+          :disabled="selectedRows.length === 0"
+          :icon="Upload"
+          class="action-btn"
+        >
+          导出至多维表格
+        </el-button>
+      </div>
     </div>
-    
+
+    <!-- 空状态 -->
+    <div v-if="!isLoading && recordList.length === 0" class="empty-state">
+      <el-empty description="暂无数据">
+        <el-button type="primary" @click="fetchData" :icon="Refresh">
+          获取数据
+        </el-button>
+      </el-empty>
+    </div>
+
     <!-- 导出至多维表格对话框 -->
     <el-dialog
       v-model="exportToBaseDialogVisible"
@@ -129,7 +205,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
-import { ElMessage, ElDialog, ElSelect, ElOption, ElButton, ElProgress, ElRadioGroup, ElRadio } from 'element-plus';
+import {
+  ElMessage, ElDialog, ElSelect, ElOption, ElButton, ElProgress, ElRadioGroup, ElRadio,
+  ElTable, ElTableColumn, ElPagination, ElTag, ElIcon, ElButtonGroup, ElEmpty
+} from 'element-plus';
+import {
+  Refresh, Document, Check, Setting, List, Close, Switch, Operation,
+  Printer, Download, Upload
+} from '@element-plus/icons-vue';
 // @ts-ignore
 import { fetchVisibleFields } from '@/utils/fieldFetcher';
 // @ts-ignore
@@ -650,103 +733,133 @@ async function generatePDF(printItem) {
 </script>
 
 <style scoped>
+/* 基础样式 */
 .print-data-selector {
-  padding: 20px;
-  background-color: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  height: calc(100% - 40px);
+  padding: 0;
+  background: #fafbfc;
+  min-height: 500px;
   display: flex;
   flex-direction: column;
+  gap: 20px;
 }
 
-h3 {
-  margin-top: 0;
-  margin-bottom: 20px;
-  color: #303133;
-}
-
-h4 {
-  margin-top: 0;
-  margin-bottom: 0;
-  color: #606266;
-}
-
-.field-selection {
-  margin-bottom: 20px;
+/* 工具栏样式 */
+.toolbar {
   padding: 15px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
+  background: white;
+  border-bottom: 1px solid #e9ecef;
 }
 
-.data-preview {
-  margin-bottom: 20px;
-  padding: 15px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.data-preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.record-count {
-  font-size: 14px;
-  color: #606266;
-  background-color: #ecf5ff;
-  padding: 5px 10px;
-  border-radius: 4px;
-  border: 1px solid #d9ecff;
+.toolbar-section {
   display: flex;
   align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.data-stats {
+  display: flex;
   gap: 8px;
 }
 
-.count-number {
-  font-weight: bold;
-  color: #409eff;
+/* 卡片样式 */
+.field-selection-card,
+.data-preview-card,
+.action-buttons-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin: 0 15px;
 }
 
-.select-btn {
-  margin-left: 5px;
-  padding: 0 5px;
+.card-header {
+  padding: 20px 20px 15px 20px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
 }
 
-.select-btn:hover {
-  color: #409eff;
-  background-color: #ecf5ff;
+.card-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 5px 0;
+  font-size: 16px;
+  color: #303133;
+  font-weight: 600;
 }
 
+.card-header p {
+  margin: 0;
+  color: #606266;
+  font-size: 14px;
+}
+
+/* 字段选择样式 */
+.field-select {
+  width: 100%;
+  margin: 15px 20px 20px 20px;
+}
+
+/* 选择控制样式 */
+.selection-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* 表格容器样式 */
+.table-container {
+  margin: 0 20px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.data-table {
+  border-radius: 8px;
+}
+
+.field-value {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* 分页样式 */
 .pagination-container {
-  margin-top: 15px;
+  padding: 15px 20px 20px 20px;
   display: flex;
   justify-content: center;
+  background: #f8f9fa;
 }
 
-.action-buttons {
-  display: flex;
-  gap: 15px;
-  justify-content: flex-end;
-  margin-top: 20px;
+/* 操作按钮样式 */
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 20px;
 }
 
+.action-btn {
+  justify-content: flex-start;
+  padding: 12px 20px;
+  height: auto;
+  font-size: 14px;
+}
+
+/* 空状态样式 */
+.empty-state {
+  margin: 40px 15px;
+  text-align: center;
+}
+
+/* 表格深度样式 */
 :deep(.el-table) {
-  flex: 1;
-  overflow: auto;
+  border-radius: 8px;
 }
 
 :deep(.el-table__header) {
-  font-weight: bold;
-  background-color: #f0f7ff;
+  font-weight: 600;
 }
 
 :deep(.el-table__row.selected) {
@@ -757,10 +870,12 @@ h4 {
   background-color: #f5f7fa;
 }
 
+/* 对话框样式 */
 .export-tip {
   font-size: 12px;
   color: #909399;
   margin-top: 10px;
+  line-height: 1.5;
 }
 
 .export-progress {
@@ -772,11 +887,88 @@ h4 {
   margin-top: 15px;
 }
 
-.quality-slider {
-  margin-top: 10px;
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .toolbar-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .data-stats {
+    justify-content: center;
+  }
+
+  .field-selection-card,
+  .data-preview-card,
+  .action-buttons-card {
+    margin: 0 10px;
+  }
+
+  .card-header {
+    padding: 15px;
+  }
+
+  .field-select {
+    margin: 12px 15px 15px 15px;
+  }
+
+  .table-container {
+    margin: 0 15px;
+  }
+
+  .pagination-container {
+    padding: 12px 15px 15px 15px;
+  }
+
+  .button-grid {
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .selection-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
 }
 
-.scale-slider {
-  margin-top: 10px;
+@media (max-width: 480px) {
+  .field-selection-card,
+  .data-preview-card,
+  .action-buttons-card {
+    margin: 0 8px;
+  }
+
+  .card-header h4 {
+    font-size: 14px;
+  }
+
+  .card-header p {
+    font-size: 12px;
+  }
+
+  .action-btn {
+    padding: 10px 15px;
+    font-size: 13px;
+  }
 }
-</style> 
+
+/* 动画效果 */
+.field-selection-card,
+.data-preview-card,
+.action-buttons-card {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
