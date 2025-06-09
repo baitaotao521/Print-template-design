@@ -95,13 +95,13 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
       batchCount++;
 
       // 如果设置了最大记录数量限制，计算本次应该获取的数量
-      let currentPageSize = 500;
+      let currentPageSize = 200;
       if (maxRecords && maxRecords > 0) {
         const remainingRecords = maxRecords - records.length;
         if (remainingRecords <= 0) {
           break; // 已达到最大记录数量
         }
-        currentPageSize = Math.min(500, remainingRecords);
+        currentPageSize = Math.min(200, remainingRecords);
       }
 
       const response = await table.getRecords({

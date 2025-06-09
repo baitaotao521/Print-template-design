@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { createChildMessenger } from '@/utils/windowMessenger';
+import { createPrintDataPreparer } from '@/utils/printDataPreparer';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
@@ -376,13 +377,73 @@ function goBack() {
 // 打印预览
 function printPreview() {
   try {
-    // 获取测试数据
-    const testData = templateData.value.testData || {};
-    hiprintTemplate.print(testData);
-    ElMessage.success('打印预览已生成');
+    // 创建打印数据准备器
+    const preparer = createPrintDataPreparer(true); // 启用调试模式
+
+    // 使用工具类准备打印数据
+    const printData = preparer.prepareSinglePrintData(templateData.value, {
+      includeTableData: true,
+      preferTestData: true,
+      fallbackToSample: true
+    });
+
+    // 验证打印数据
+    const validation = preparer.validatePrintData(printData);
+    if (!validation.isValid) {
+      console.error('打印数据验证失败:', validation.errors);
+      ElMessage.error('打印数据无效: ' + validation.errors.join(', '));
+      return;
+    }
+
+    // 如果有警告，显示警告信息
+    if (validation.warnings.length > 0) {
+      console.warn('打印数据警告:', validation.warnings);
+    }
+
+    console.log('准备的打印数据:', printData);
+    console.log('数据验证结果:', validation);
+
+    // 执行打印预览（数据已经在获取时格式化过了）
+    hiprintTemplate.print(printData);
+    ElMessage.success('打印预览已生成，使用了真实的表格数据');
   } catch (error) {
     console.error('打印预览失败:', error);
-    ElMessage.error('打印预览失败');
+    ElMessage.error('打印预览失败: ' + (error.message || String(error)));
+  }
+}
+
+// 导出PDF
+function exportToPDF() {
+  try {
+    // 创建打印数据准备器
+    const preparer = createPrintDataPreparer(true); // 启用调试模式
+
+    // 使用工具类准备打印数据
+    const printData = preparer.prepareSinglePrintData(templateData.value, {
+      includeTableData: true,
+      preferTestData: true,
+      fallbackToSample: true
+    });
+
+    // 验证打印数据
+    const validation = preparer.validatePrintData(printData);
+    if (!validation.isValid) {
+      console.error('打印数据验证失败:', validation.errors);
+      ElMessage.error('打印数据无效: ' + validation.errors.join(', '));
+      return;
+    }
+
+    console.log('准备的PDF导出数据:', printData);
+
+    // 生成文件名
+    const filename = `模板预览_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    // 执行PDF导出（数据已经在获取时格式化过了）
+    hiprintTemplate.toPdf(printData, filename);
+    ElMessage.success('PDF导出成功，使用了真实的表格数据');
+  } catch (error) {
+    console.error('导出PDF失败:', error);
+    ElMessage.error('导出PDF失败: ' + (error.message || String(error)));
   }
 }
 </script>
@@ -479,6 +540,9 @@ function printPreview() {
 
           <el-button type="success" size="small" @click="printPreview" :icon="Printer">
             打印预览
+          </el-button>
+          <el-button type="primary" size="small" @click="exportToPDF" :icon="Download">
+            导出PDF
           </el-button>
         </div>
       </div>

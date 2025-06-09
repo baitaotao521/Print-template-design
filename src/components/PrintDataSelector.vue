@@ -304,6 +304,8 @@ import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 import { getAttachmentFields } from '@/utils/attachmentUploader';
 // @ts-ignore
 import { convertPdfToJpegFile, convertPdfToPngFile } from '@/utils/pdfToImageConverter';
+// @ts-ignore
+import { createPrintDataPreparer } from '@/utils/printDataPreparer';
 
 // 定义字段类型
 interface Field {
@@ -543,26 +545,39 @@ function exportPDF(): void {
 
 // 准备打印数据
 function preparePrintData(): any[] {
-  // 将选中的行数据转换为打印数据格式
-  return selectedRows.value.map(row => {
-    // 复制所有字段数据，排除recordId和field
-    const rowData = { ...row };
-    delete rowData.recordId;
-    delete rowData.field;
-    
-    // 构造每条记录的打印数据对象，包含普通文本字段和表格数据
-    const printItem: any = {};
-    
-    // 添加所有字段作为普通文本字段
-    Object.keys(rowData).forEach(key => {
-      printItem[key] = rowData[key];
+  try {
+    // 创建打印数据准备器
+    const preparer = createPrintDataPreparer(true); // 启用调试模式
+
+    // 准备模板数据对象
+    const templateData = {
+      fields: fields.value,
+      recordsData: recordList.value,
+      testData: {} // PrintDataSelector中没有测试数据
+    };
+
+    // 使用工具类准备多条记录的打印数据
+    const printData = preparer.prepareMultiplePrintData(templateData, selectedRows.value, {
+      includeTableData: true,
+      maxRecords: 100
     });
-    
-    // 添加表格数据 - 将同一条记录作为表格数据
-    printItem.table = [rowData];
-    
-    return printItem;
-  });
+
+    // 验证打印数据
+    const validation = preparer.validatePrintData(printData);
+    if (!validation.isValid) {
+      console.error('打印数据验证失败:', validation.errors);
+      throw new Error('打印数据无效: ' + validation.errors.join(', '));
+    }
+
+    console.log('准备的打印数据:', printData);
+    console.log('数据验证结果:', validation);
+
+    // 返回打印数据（数据已经在获取时格式化过了）
+    return printData;
+  } catch (error) {
+    console.error('准备打印数据失败:', error);
+    throw error;
+  }
 }
 
 // 全选所有记录
@@ -764,23 +779,39 @@ async function executeExport() {
 
 // 准备单条记录的打印数据
 function prepareSinglePrintData(row) {
-  // 复制所有字段数据，排除recordId和field
-  const rowData = { ...row };
-  delete rowData.recordId;
-  delete rowData.field;
-  
-  // 构造打印数据对象，包含普通文本字段和表格数据
-  const printItem = {};
-  
-  // 添加所有字段作为普通文本字段
-  Object.keys(rowData).forEach(key => {
-    printItem[key] = rowData[key];
-  });
-  
-  // 添加表格数据 - 将同一条记录作为表格数据
-  printItem.table = [rowData];
-  
-  return printItem;
+  try {
+    // 创建打印数据准备器
+    const preparer = createPrintDataPreparer(true); // 启用调试模式
+
+    // 准备模板数据对象
+    const templateData = {
+      fields: fields.value,
+      recordsData: [row], // 只包含当前记录
+      testData: {} // PrintDataSelector中没有测试数据
+    };
+
+    // 使用工具类准备单条记录的打印数据
+    const printData = preparer.prepareSinglePrintData(templateData, {
+      includeTableData: true,
+      preferTestData: false, // 优先使用记录数据而不是测试数据
+      fallbackToSample: false
+    });
+
+    // 验证打印数据
+    const validation = preparer.validatePrintData(printData);
+    if (!validation.isValid) {
+      console.error('单条记录打印数据验证失败:', validation.errors);
+      throw new Error('打印数据无效: ' + validation.errors.join(', '));
+    }
+
+    console.log('准备的单条记录打印数据:', printData);
+
+    // 返回打印数据（数据已经在获取时格式化过了）
+    return printData;
+  } catch (error) {
+    console.error('准备单条记录打印数据失败:', error);
+    throw error;
+  }
 }
 
 // 生成PDF
