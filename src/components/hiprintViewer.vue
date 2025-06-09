@@ -1078,6 +1078,9 @@ function goToHelpPage() {
                         <el-dropdown-item command="import" :icon="Upload">
                           <span class="dropdown-item-text">导入模板</span>
                         </el-dropdown-item>
+                        <el-dropdown-item command="paste" :icon="Edit">
+                          <span class="dropdown-item-text">粘贴导入</span>
+                        </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>

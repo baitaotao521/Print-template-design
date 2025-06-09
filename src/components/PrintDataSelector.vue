@@ -198,14 +198,29 @@
           <el-radio-group v-model="exportFormat" class="format-radio-group">
             <el-radio label="pdf" class="format-radio">
               <div class="radio-content">
-                <strong>PDF格式</strong>
-                <span class="radio-desc">推荐格式，保持原始质量</span>
+                <div class="format-title">
+                  <strong>PDF格式</strong>
+                  <span class="format-badge recommended">推荐</span>
+                </div>
+                <span class="radio-desc">矢量格式，保持原始质量，文件适中，兼容性好</span>
               </div>
             </el-radio>
             <el-radio label="jpeg" class="format-radio">
               <div class="radio-content">
-                <strong>JPEG图片格式</strong>
-                <span class="radio-desc">图片格式，便于预览</span>
+                <div class="format-title">
+                  <strong>JPEG图片</strong>
+                  <span class="format-badge compact">压缩</span>
+                </div>
+                <span class="radio-desc">有损压缩，文件较小，适合预览和快速分享</span>
+              </div>
+            </el-radio>
+            <el-radio label="png" class="format-radio">
+              <div class="radio-content">
+                <div class="format-title">
+                  <strong>PNG图片</strong>
+                  <span class="format-badge quality">高清</span>
+                </div>
+                <span class="radio-desc">无损压缩，画质最佳，文件较大，性能消耗高</span>
               </div>
             </el-radio>
           </el-radio-group>
@@ -213,12 +228,12 @@
 
         <div class="tips-section">
           <div class="tip-item">
-            <el-icon class="tip-icon"><InfoFilled /></el-icon>
-            <span>每条记录将生成一个单独的文件，并上传到对应记录的附件字段中</span>
+            <el-icon class="tip-icon"><WarningFilled /></el-icon>
+            <span>请仔细确认附件字段选择，文件将上传到所选字段中，选错字段可能导致数据混乱(在多维表格中可使用CTRL+Z进行撤销)</span>
           </div>
           <div class="tip-item">
-            <el-icon class="tip-icon"><WarningFilled /></el-icon>
-            <span>JPEG格式会使用浏览器进行转换，可能影响图片质量和系统性能，建议根据实际需求选择合适的格式</span>
+            <el-icon class="tip-icon"><InfoFilled /></el-icon>
+            <span>格式选择建议：PDF适合文档存档，JPEG适合快速分享，PNG适合高质量图像保存</span>
           </div>
         </div>
       </div>
@@ -288,7 +303,7 @@ import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
 import { getAttachmentFields } from '@/utils/attachmentUploader';
 // @ts-ignore
-import { convertPdfToJpegFile } from '@/utils/pdfToImageConverter';
+import { convertPdfToJpegFile, convertPdfToPngFile } from '@/utils/pdfToImageConverter';
 
 // 定义字段类型
 interface Field {
@@ -712,10 +727,14 @@ async function executeExport() {
         if (exportFormat.value === 'pdf') {
           // PDF格式，直接使用生成的PDF Blob
           file = new File([pdfBlob], `${baseFileName}.pdf`, { type: 'application/pdf' });
-        } else {
+        } else if (exportFormat.value === 'jpeg') {
           // JPEG格式，需要转换
           // 使用转换工具将PDF转为JPEG
           file = await convertPdfToJpegFile(pdfBlob, baseFileName);
+        } else if (exportFormat.value === 'png') {
+          // PNG格式，需要转换
+          // 使用转换工具将PDF转为PNG
+          file = await convertPdfToPngFile(pdfBlob, baseFileName);
         }
         
         // 上传文件到附件字段
@@ -732,7 +751,8 @@ async function executeExport() {
       }
     }
     
-    ElMessage.success(`已成功导出 ${exportCurrent.value} 条记录的${exportFormat.value === 'pdf' ? 'PDF' : 'JPEG图片'}到多维表格`);
+    const formatName = exportFormat.value === 'pdf' ? 'PDF' : exportFormat.value === 'jpeg' ? 'JPEG图片' : 'PNG图片';
+    ElMessage.success(`已成功导出 ${exportCurrent.value} 条记录的${formatName}到多维表格`);
     exportToBaseDialogVisible.value = false;
   } catch (error) {
     console.error('导出至多维表格失败:', error);
@@ -1373,11 +1393,14 @@ async function generatePDF(printItem) {
 
 .format-radio {
   margin: 0;
-  padding: 16px;
+  padding: 14px 16px;
   border: 2px solid #e9ecef;
   border-radius: 8px;
   transition: all 0.3s ease;
   background: white;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
 }
 
 .format-radio:hover {
@@ -1393,18 +1416,51 @@ async function generatePDF(printItem) {
 .radio-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin-left: 8px;
+  flex: 1;
+  justify-content: center;
 }
 
-.radio-content strong {
+.format-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-title strong {
   color: #303133;
   font-size: 14px;
+  font-weight: 600;
+}
+
+.format-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.format-badge.recommended {
+  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
+  color: white;
+}
+
+.format-badge.compact {
+  background: linear-gradient(135deg, #e6a23c 0%, #d48806 100%);
+  color: white;
+}
+
+.format-badge.quality {
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  color: white;
 }
 
 .radio-desc {
   color: #909399;
   font-size: 12px;
+  line-height: 1.4;
 }
 
 .tips-section {
