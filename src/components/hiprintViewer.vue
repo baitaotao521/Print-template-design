@@ -7,6 +7,8 @@ import { fetchVisibleFields } from '@/utils/fieldFetcher';
 // @ts-ignore
 import { fetchRecordsAndValues } from '@/utils/recordFetcher';
 // @ts-ignore
+import { formatFieldValue } from '@/utils/fieldFormatter';
+// @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
 import PrintDataSelector from './PrintDataSelector.vue';
 import FieldInfoViewer from './FieldInfoViewer.vue';
@@ -99,6 +101,10 @@ onMounted(async () => {
     message.value = '正在加载字段信息...';
     await loadFields();
 
+    // 获取第一个记录的testData
+    message.value = '正在获取测试数据...';
+    await loadFirstRecordTestData();
+
     // 然后一次性初始化打印组件
     message.value = '正在初始化打印组件...';
     await initHiprint();
@@ -118,8 +124,8 @@ onMounted(async () => {
     isLoading.value = false;
     message.value = '';
 
-    // 懒加载记录数据
-    loadRecordsAsync();
+    // 继续异步加载剩余记录数据
+    loadRemainingRecordsAsync();
   } catch (err) {
     console.error('初始化失败:', err);
     message.value = '初始化失败: ' + (err.message || String(err));
@@ -134,10 +140,10 @@ async function loadFields() {
     const view = await table.getActiveView();
     const tableId = table.id;
     const viewId = view.id;
-    
+
     // 获取字段信息
     fields.value = await fetchVisibleFields(tableId, viewId);
-    
+
     return { fields: fields.value, tableId, viewId };
   } catch (err) {
     console.error('获取字段失败:', err);
@@ -145,46 +151,83 @@ async function loadFields() {
   }
 }
 
-// 异步加载记录数据
-async function loadRecordsAsync() {
+// 获取第一个记录的测试数据
+async function loadFirstRecordTestData() {
   try {
-    isLoadingRecords.value = true;
-    recordsLoadingMessage.value = '正在加载记录数据，这可能需要一些时间...';
-    
     const table = await bitable.base.getActiveTable();
     const view = await table.getActiveView();
     const tableId = table.id;
     const viewId = view.id;
-    
+
+    // 只获取第一条记录，使用格式化数据
+    const firstRecordData = await fetchRecordsAndValues(
+      tableId,
+      viewId,
+      null,
+      true, // 使用格式化数据
+      null,
+      1 // 只获取1条记录
+    );
+
+    // 设置测试数据
+    window.fieldTestData = {};
+    if (firstRecordData && firstRecordData.length > 0) {
+      const testData = firstRecordData[0];
+      if (testData && testData.field) {
+        testData.field.forEach(item => {
+          // 使用格式化后的值，如果格式化失败则使用原始值
+          try {
+            const formattedValue = formatFieldValue(item.value, item.type);
+            window.fieldTestData[item.field] = formattedValue !== undefined ? formattedValue : item.value;
+          } catch (formatError) {
+            console.warn(`格式化字段 ${item.field} 失败:`, formatError);
+            window.fieldTestData[item.field] = item.value;
+          }
+        });
+      }
+      console.log('第一个记录的测试数据已加载并格式化:', window.fieldTestData);
+    } else {
+      console.warn('没有找到记录数据，使用空的测试数据');
+    }
+
+    return window.fieldTestData;
+  } catch (err) {
+    console.error('获取第一个记录测试数据失败:', err);
+    // 即使失败也要设置空的测试数据，避免阻塞初始化
+    window.fieldTestData = {};
+    return window.fieldTestData;
+  }
+}
+
+// 异步加载剩余记录数据
+async function loadRemainingRecordsAsync() {
+  try {
+    isLoadingRecords.value = true;
+    recordsLoadingMessage.value = '正在加载完整记录数据，这可能需要一些时间...';
+
+    const table = await bitable.base.getActiveTable();
+    const view = await table.getActiveView();
+    const tableId = table.id;
+    const viewId = view.id;
+
     // 使用回调函数，在每批数据加载完成时更新界面
     await fetchRecordsAndValues(
-      tableId, 
-      viewId, 
-      null, 
-      true, 
+      tableId,
+      viewId,
+      null,
+      true,
       (loadedRecords, batchCount, isComplete) => {
         // 更新记录数据
         recordsData.value = loadedRecords.map(record => {
-      const recordData = { recordId: record.recordId, field: record.field };
-      if (record.field) {
-        record.field.forEach(item => {
-          recordData[item.field] = item.value;
+          const recordData = { recordId: record.recordId, field: record.field };
+          if (record.field) {
+            record.field.forEach(item => {
+              recordData[item.field] = item.value;
+            });
+          }
+          return recordData;
         });
-      }
-      return recordData;
-    });
-    
-        // 更新测试数据（使用第一条记录）
-        if (loadedRecords.length > 0) {
-          const testData = loadedRecords[0];
-    window.fieldTestData = {};
-    if (testData && testData.field) {
-      testData.field.forEach(item => {
-        window.fieldTestData[item.field] = item.value;
-      });
-    }
-        }
-        
+
         // 更新加载提示
         if (isComplete) {
           recordsLoadingMessage.value = `已成功加载 ${loadedRecords.length} 条记录`;
@@ -205,6 +248,11 @@ async function loadRecordsAsync() {
   } finally {
     isLoadingRecords.value = false;
   }
+}
+
+// 异步加载记录数据（保持向后兼容）
+async function loadRecordsAsync() {
+  return loadRemainingRecordsAsync();
 }
 
 // 修改原来的 loadFieldsAndData 方法

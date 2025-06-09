@@ -19,9 +19,10 @@ async function retry(fn, retries = 3, delay = 1000) {
  * @param {string} [recordId] - 记录ID，如果为空则获取所有记录
  * @param {boolean} [shouldFormat=false] - 是否返回格式化后的值
  * @param {function} [onBatchLoaded] - 每批数据加载完成时的回调函数，参数为已加载的记录
+ * @param {number} [maxRecords] - 最大记录数量限制，如果为空则获取所有记录
  * @returns {Promise<Array<{recordId: string, field: Array<{name: string, value: any, type: number, field: string}>}>>}
  */
-export async function fetchRecordsAndValues(tableId, viewId, recordId = null, shouldFormat = false, onBatchLoaded = null) {
+export async function fetchRecordsAndValues(tableId, viewId, recordId = null, shouldFormat = false, onBatchLoaded = null, maxRecords = null) {
   try {
     // 获取当前表格
     const table = await bitable.base.getTableById(tableId);
@@ -89,15 +90,26 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
     let pageToken = null;
     let hasMore = true;
     let batchCount = 0;
-    
+
     while (hasMore) {
       batchCount++;
+
+      // 如果设置了最大记录数量限制，计算本次应该获取的数量
+      let currentPageSize = 500;
+      if (maxRecords && maxRecords > 0) {
+        const remainingRecords = maxRecords - records.length;
+        if (remainingRecords <= 0) {
+          break; // 已达到最大记录数量
+        }
+        currentPageSize = Math.min(500, remainingRecords);
+      }
+
       const response = await table.getRecords({
-        pageSize: 200,
+        pageSize: currentPageSize,
         pageToken,
         viewId
       });
-      
+
       const { records: pageRecords, pageToken: nextPageToken } = response;
       
       // 批量获取所有记录的字段值
@@ -146,16 +158,34 @@ export async function fetchRecordsAndValues(tableId, viewId, recordId = null, sh
       // 并行处理所有记录
       const newRecords = await Promise.all(recordPromises);
       const validRecords = newRecords.filter(Boolean);
-      records.push(...validRecords);
-      
+
+      // 如果设置了最大记录数量限制，确保不超过限制
+      if (maxRecords && maxRecords > 0) {
+        const remainingSlots = maxRecords - records.length;
+        const recordsToAdd = validRecords.slice(0, remainingSlots);
+        records.push(...recordsToAdd);
+
+        // 如果达到最大记录数量，停止获取
+        if (records.length >= maxRecords) {
+          hasMore = false;
+        }
+      } else {
+        records.push(...validRecords);
+      }
+
       // 调用回调函数，返回当前批次的数据
       if (onBatchLoaded && typeof onBatchLoaded === 'function') {
-        onBatchLoaded(records.slice(), batchCount, !nextPageToken);
+        const isComplete = !nextPageToken || (maxRecords && records.length >= maxRecords);
+        onBatchLoaded(records.slice(), batchCount, isComplete);
       }
-      
+
       // 检查是否还有更多记录
-      hasMore = !!nextPageToken;
-      pageToken = nextPageToken;
+      if (maxRecords && records.length >= maxRecords) {
+        hasMore = false;
+      } else {
+        hasMore = !!nextPageToken;
+        pageToken = nextPageToken;
+      }
     }
 
     return records;
