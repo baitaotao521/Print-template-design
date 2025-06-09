@@ -16,6 +16,7 @@ import { ElMessage, ElButton, ElMessageBox, ElTabs, ElTabPane, ElSelect, ElOptio
 import { Printer, QuestionFilled, WarningFilled, Loading, Edit, DataBoard, FolderOpened, InfoFilled, Setting, Download, Upload, ArrowDown } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import { saveTemplate, getTemplate, getAllTemplates, deleteTemplate } from '@/utils/indexedDBHelper';
+import { createParentMessenger, COMMUNICATION_STATUS } from '@/utils/windowMessenger';
 
 // 声明全局变量类型
 declare global {
@@ -57,6 +58,9 @@ const templateList = ref([]);
 const currentTemplateId = ref('');
 const templateName = ref('');
 
+// 窗口通信管理器
+let parentMessenger = null;
+
 // 标签页配置
 const tabs = ref([
   { name: 'design', label: '设计模板', icon: markRaw(Edit), emoji: '🎨' },
@@ -82,32 +86,38 @@ onMounted(async () => {
     isLoading.value = true;
     message.value = '正在初始化...';
 
-    // 添加消息监听器，接收从模板设计页面发送回来的数据
-    window.addEventListener('message', handleMessageFromDesigner);
-    
+    // 创建父窗口通信管理器
+    parentMessenger = createParentMessenger();
+
+    // 监听来自子窗口的消息
+    const cleanupMessageListener = parentMessenger.listenForMessages(handleMessageFromDesigner);
+
+    // 在组件卸载时清理监听器
+    window.addEventListener('beforeunload', cleanupMessageListener);
+
     // 先获取字段信息
     message.value = '正在加载字段信息...';
     await loadFields();
-    
+
     // 然后一次性初始化打印组件
     message.value = '正在初始化打印组件...';
     await initHiprint();
-    
+
     // 检查是否有从模板设计页面返回的模板数据
     const hasTemplateFromDesigner = await checkSavedTemplate();
-    
+
     // 如果没有从设计器返回的模板，尝试加载默认模板
     if (!hasTemplateFromDesigner) {
       message.value = '正在加载默认模板...';
       await loadDefaultTemplate();
     }
-    
+
     // 加载模板列表
     await loadTemplateList();
-    
+
     isLoading.value = false;
     message.value = '';
-    
+
     // 懒加载记录数据
     loadRecordsAsync();
   } catch (err) {
@@ -586,7 +596,7 @@ function handlePrint(printData, isPdf = false) {
 }
 
 // 跳转到模板设计页面
-function goToTemplateDesigner() {
+async function goToTemplateDesigner() {
   try {
     // 获取当前模板数据
     const currentTemplate = hiprintTemplate ? hiprintTemplate.getJson() : {};
@@ -611,76 +621,36 @@ function goToTemplateDesigner() {
 
     console.log('准备发送完整数据到独立设计器:', templateData);
 
-    // 直接打开新窗口，不传递URL参数
+    // 使用通信管理器打开窗口并发送数据
     const designerUrl = window.location.origin + window.location.pathname + '#/template-designer';
-    const newWindow = window.open(designerUrl, '_blank', 'width=1200,height=800');
 
-    // 如果新窗口被阻止，提示用户
-    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-      ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
-      return;
+    try {
+      const result = await parentMessenger.openWindowAndSendData(designerUrl, templateData, {
+        windowFeatures: 'width=1200,height=800',
+        timeout: 8000,
+        onStatusChange: (status) => {
+          switch (status) {
+            case COMMUNICATION_STATUS.WAITING:
+              console.log('等待子窗口准备就绪...');
+              break;
+            case COMMUNICATION_STATUS.CONNECTED:
+              ElMessage.success('模板设计器已打开，完整数据传输成功');
+              break;
+            case COMMUNICATION_STATUS.TIMEOUT:
+              console.log('通信超时，但数据可能已发送');
+              break;
+            case COMMUNICATION_STATUS.ERROR:
+              console.log('通信出现错误');
+              break;
+          }
+        }
+      });
+
+      console.log('窗口通信结果:', result);
+    } catch (error) {
+      console.error('窗口通信失败:', error);
+      ElMessage.error(error.message || '打开模板设计器失败');
     }
-
-    // 标记是否已发送数据，避免重复发送
-    let dataSent = false;
-
-    // 发送数据的函数
-    const sendDataToDesigner = () => {
-      if (dataSent) {
-        console.log('数据已发送，跳过重复发送');
-        return;
-      }
-
-      try {
-        // 检查窗口是否仍然有效
-        if (newWindow.closed) {
-          console.log('目标窗口已关闭，取消发送数据');
-          return;
-        }
-
-        // 发送完整数据到独立设计器
-        newWindow.postMessage({
-          type: 'INIT_TEMPLATE_DATA',
-          data: templateData
-        }, '*');
-
-        dataSent = true;
-        console.log('完整数据已发送到独立设计器');
-        ElMessage.success('模板设计器已打开，完整数据传输成功');
-      } catch (postError) {
-        console.error('发送数据到独立设计器失败:', postError);
-        ElMessage.error('发送数据失败: ' + (postError.message || String(postError)));
-      }
-    };
-
-    // 监听新窗口的加载完成消息
-    const messageListener = (event) => {
-      // 验证消息来源和类型
-      if (event.source === newWindow &&
-          event.data &&
-          event.data.type === 'DESIGNER_READY' &&
-          !dataSent) {
-        console.log('收到独立设计器准备就绪消息');
-        sendDataToDesigner();
-        // 移除监听器
-        window.removeEventListener('message', messageListener);
-        // 清除超时定时器
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      }
-    };
-
-    window.addEventListener('message', messageListener);
-
-    // 设置超时，如果8秒内没有收到准备就绪消息，直接发送数据
-    const timeoutId = setTimeout(() => {
-      if (!dataSent) {
-        console.log('超时发送数据到独立设计器');
-        sendDataToDesigner();
-      }
-      window.removeEventListener('message', messageListener);
-    }, 8000);
 
   } catch (error) {
     console.error('打开模板设计器失败:', error);
@@ -734,20 +704,17 @@ async function checkSavedTemplate() {
 }
 
 // 处理从模板设计页面发送回来的消息
-function handleMessageFromDesigner(event) {
+function handleMessageFromDesigner(messageData) {
   try {
-    // 检查消息类型
-    if (event.data && event.data.type === 'TEMPLATE_SAVED') {
-      console.log('收到模板设计页面发送的模板数据');
-      
-      // 导入模板
-      if (event.data.template) {
-        importTemplate(event.data.template);
-        ElMessage.success('已成功导入模板设计器中保存的模板');
-      } else {
-        console.warn('收到的模板数据不完整');
-        ElMessage.warning('收到的模板数据不完整');
-      }
+    console.log('收到模板设计页面发送的模板数据');
+
+    // 导入模板
+    if (messageData.template) {
+      importTemplate(messageData.template);
+      ElMessage.success('已成功导入模板设计器中保存的模板');
+    } else {
+      console.warn('收到的模板数据不完整');
+      ElMessage.warning('收到的模板数据不完整');
     }
   } catch (error) {
     console.error('处理模板设计页面消息失败:', error);

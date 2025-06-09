@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { createChildMessenger } from '@/utils/windowMessenger';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
 import { createCustomProvider } from '@/utils/printElementProvider';
@@ -29,6 +30,9 @@ const message = ref('');
 const isLoading = ref(true);
 let hiprintTemplate: any = null;
 let templateData = ref(null);
+
+// 子窗口通信管理器
+let childMessenger = null;
 
 // 跟踪是否有未保存的更改
 const hasUnsavedChanges = ref(false);
@@ -74,29 +78,20 @@ onMounted(async () => {
     // 添加浏览器关闭前的警告监听器
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // 添加消息监听器，接收来自父页面的数据
-    window.addEventListener('message', handleMessageFromParent);
+    // 创建子窗口通信管理器
+    childMessenger = createChildMessenger();
 
-    // 向父页面发送准备就绪消息
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        type: 'DESIGNER_READY'
-      }, '*');
-      console.log('已向父页面发送准备就绪消息');
-    } else {
-      console.warn('没有父窗口，可能是直接访问的独立设计器');
-      message.value = '请从主页面打开设计器';
+    // 初始化通信，接收来自父页面的数据
+    try {
+      childMessenger.initialize(handleDataReceived, {
+        timeout: 12000
+      });
+    } catch (error) {
+      console.error('初始化通信失败:', error);
+      message.value = error.message || '请从主页面打开设计器';
       isLoading.value = false;
       return;
     }
-
-    // 设置超时，如果12秒内没有收到数据，显示错误
-    setTimeout(() => {
-      if (isLoading.value) {
-        message.value = '未能接收到数据，请返回上一页重试';
-        isLoading.value = false;
-      }
-    }, 12000);
 
   } catch (err) {
     console.error('初始化失败:', err);
@@ -108,73 +103,57 @@ onMounted(async () => {
 // 组件卸载时移除监听器
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload);
-  window.removeEventListener('message', handleMessageFromParent);
+  if (childMessenger) {
+    childMessenger.destroy();
+  }
 });
 
-// 标记是否已接收数据，避免重复处理
-let dataReceived = false;
-
-// 处理来自父页面的消息
-function handleMessageFromParent(event) {
+// 处理接收到的数据
+function handleDataReceived(data) {
   try {
-    // 验证消息来源（可选：添加来源验证）
-    // if (event.origin !== window.location.origin) return;
+    console.log('接收到初始化模板数据');
 
-    console.log('收到来自父页面的消息:', event.data);
+    // 设置模板数据
+    templateData.value = data;
 
-    // 验证消息类型和数据完整性
-    if (event.data &&
-        event.data.type === 'INIT_TEMPLATE_DATA' &&
-        event.data.data &&
-        !dataReceived) {
-
-      console.log('接收到初始化模板数据');
-      dataReceived = true;
-
-      // 设置模板数据
-      templateData.value = event.data.data;
-
-      // 确保所有必要的字段都存在
-      if (!templateData.value.fields) {
-        console.warn('模板数据中缺少字段信息，使用空数组');
-        templateData.value.fields = [];
-      }
-
-      if (!templateData.value.testData) {
-        console.warn('模板数据中缺少测试数据，使用空对象');
-        templateData.value.testData = {};
-      }
-
-      if (!templateData.value.recordsData) {
-        console.warn('模板数据中缺少记录数据，使用空数组');
-        templateData.value.recordsData = [];
-      }
-
-      console.log('完整模板数据已接收:', {
-        fieldsCount: templateData.value.fields.length,
-        hasTestData: Object.keys(templateData.value.testData).length > 0,
-        recordsCount: templateData.value.recordsData.length,
-        hasTemplate: !!templateData.value.template
-      });
-
-      // 更新加载状态
-      message.value = '正在初始化设计器...';
-
-      // 初始化打印组件
-      initHiprint().then(() => {
-        isLoading.value = false;
-        message.value = '';
-        ElMessage.success('设计器已准备就绪，完整数据加载成功');
-      }).catch((error) => {
-        console.error('初始化打印组件失败:', error);
-        message.value = '初始化打印组件失败: ' + (error.message || String(error));
-        isLoading.value = false;
-      });
-    } else if (event.data && event.data.type === 'INIT_TEMPLATE_DATA' && dataReceived) {
-      console.log('数据已接收，跳过重复处理');
+    // 确保所有必要的字段都存在
+    if (!templateData.value.fields) {
+      console.warn('模板数据中缺少字段信息，使用空数组');
+      templateData.value.fields = [];
     }
+
+    if (!templateData.value.testData) {
+      console.warn('模板数据中缺少测试数据，使用空对象');
+      templateData.value.testData = {};
+    }
+
+    if (!templateData.value.recordsData) {
+      console.warn('模板数据中缺少记录数据，使用空数组');
+      templateData.value.recordsData = [];
+    }
+
+    console.log('完整模板数据已接收:', {
+      fieldsCount: templateData.value.fields.length,
+      hasTestData: Object.keys(templateData.value.testData).length > 0,
+      recordsCount: templateData.value.recordsData.length,
+      hasTemplate: !!templateData.value.template
+    });
+
+    // 更新加载状态
+    message.value = '正在初始化设计器...';
+
+    // 初始化打印组件
+    initHiprint().then(() => {
+      isLoading.value = false;
+      message.value = '';
+      ElMessage.success('设计器已准备就绪，完整数据加载成功');
+    }).catch((error) => {
+      console.error('初始化打印组件失败:', error);
+      message.value = '初始化打印组件失败: ' + (error.message || String(error));
+      isLoading.value = false;
+    });
   } catch (error) {
-    console.error('处理父页面消息失败:', error);
+    console.error('处理数据失败:', error);
     ElMessage.error('处理数据失败: ' + (error.message || String(error)));
     isLoading.value = false;
   }
@@ -313,7 +292,7 @@ function handlePaperSizeChange(value) {
 }
 
 // 保存模板并返回
-function saveTemplateAndReturn() {
+async function saveTemplateAndReturn() {
   try {
     // 标记正在正确退出
     isExitingProperly.value = true;
@@ -322,76 +301,38 @@ function saveTemplateAndReturn() {
     // 获取当前模板数据并确保可以序列化
     const json = exportTemplate();
     const serializedTemplate = JSON.parse(JSON.stringify(json));
-    
-    // 使用postMessage将数据发送回父窗口
-    const savedData = {
-      type: 'TEMPLATE_SAVED',
-      template: serializedTemplate,
-      timestamp: new Date().getTime()
-    };
-    
-    // 检查是否有父窗口
-    if (window.opener && !window.opener.closed) {
-      try {
-        // 尝试发送数据到父窗口
-        // 使用'*'作为targetOrigin，允许跨域通信
-        window.opener.postMessage(savedData, '*');
-        console.log('模板数据已发送到父窗口');
-        
-        // 关闭当前窗口
-        setTimeout(() => {
-          window.close();
-        }, 500);
-        
-        ElMessage.success('模板已保存');
-      } catch (postMessageError) {
-        console.error('发送数据到父窗口失败:', postMessageError);
-        
-        // 备用方案：提示用户手动复制模板数据
-        const templateJson = JSON.stringify(serializedTemplate);
-        
-        // 创建一个临时文本区域
-        const textArea = document.createElement('textarea');
-        textArea.value = templateJson;
-        document.body.appendChild(textArea);
-        textArea.select();
-        
-        try {
-          // 尝试复制到剪贴板
-          document.execCommand('copy');
-          ElMessage({
-            message: '无法自动发送数据，模板JSON已复制到剪贴板，请在原窗口中粘贴并导入',
-            duration: 0,
-            showClose: true,
-            type: 'warning'
-          });
-        } catch (copyError) {
-          console.error('复制到剪贴板失败:', copyError);
-          ElMessage({
-            message: '无法自动发送数据，请手动保存模板JSON：' + templateJson.substring(0, 100) + '...',
-            duration: 0,
-            showClose: true,
-            type: 'error'
-          });
-        } finally {
-          document.body.removeChild(textArea);
-        }
-      }
-    } else {
-      // 如果没有父窗口，提示用户手动保存数据
+
+    // 使用通信管理器发送数据到父窗口
+    try {
+      const result = await childMessenger.sendDataToParent({
+        template: serializedTemplate
+      });
+
+      console.log('模板数据发送结果:', result);
+      ElMessage.success('模板已保存');
+
+      // 关闭当前窗口
+      setTimeout(() => {
+        window.close();
+      }, 500);
+
+    } catch (sendError) {
+      console.error('发送数据到父窗口失败:', sendError);
+
+      // 备用方案：提示用户手动复制模板数据
       const templateJson = JSON.stringify(serializedTemplate);
-      
+
       // 创建一个临时文本区域
       const textArea = document.createElement('textarea');
       textArea.value = templateJson;
       document.body.appendChild(textArea);
       textArea.select();
-      
+
       try {
         // 尝试复制到剪贴板
         document.execCommand('copy');
         ElMessage({
-          message: '未检测到父窗口，模板JSON已复制到剪贴板，请在原窗口中粘贴并导入',
+          message: '无法自动发送数据，模板JSON已复制到剪贴板，请在原窗口中粘贴并导入',
           duration: 0,
           showClose: true,
           type: 'warning'
@@ -399,7 +340,7 @@ function saveTemplateAndReturn() {
       } catch (copyError) {
         console.error('复制到剪贴板失败:', copyError);
         ElMessage({
-          message: '未检测到父窗口，请手动保存模板JSON：' + templateJson.substring(0, 100) + '...',
+          message: '无法自动发送数据，请手动保存模板JSON：' + templateJson.substring(0, 100) + '...',
           duration: 0,
           showClose: true,
           type: 'error'
