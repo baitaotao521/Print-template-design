@@ -19,7 +19,7 @@ const routes = [
   {
     path: '/demo',
     name: 'Demo',
-    component: () => import('../components/PrintDataSelectorDemo.vue')
+    // component: () => import('../components/PrintDataSelectorDemo.vue')
   }
 ]
 
