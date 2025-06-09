@@ -69,19 +69,35 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 onMounted(async () => {
   try {
     isLoading.value = true;
-    message.value = '正在加载数据...';
+    message.value = '等待接收数据...';
 
     // 添加浏览器关闭前的警告监听器
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // 从sessionStorage加载数据
-    await loadTemplateDataFromDB();
+    // 添加消息监听器，接收来自父页面的数据
+    window.addEventListener('message', handleMessageFromParent);
 
-    // 初始化打印组件
-    await initHiprint();
+    // 向父页面发送准备就绪消息
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: 'DESIGNER_READY'
+      }, '*');
+      console.log('已向父页面发送准备就绪消息');
+    } else {
+      console.warn('没有父窗口，可能是直接访问的独立设计器');
+      message.value = '请从主页面打开设计器';
+      isLoading.value = false;
+      return;
+    }
 
-    isLoading.value = false;
-    message.value = '';
+    // 设置超时，如果12秒内没有收到数据，显示错误
+    setTimeout(() => {
+      if (isLoading.value) {
+        message.value = '未能接收到数据，请返回上一页重试';
+        isLoading.value = false;
+      }
+    }, 12000);
+
   } catch (err) {
     console.error('初始化失败:', err);
     message.value = '初始化失败: ' + (err.message || String(err));
@@ -92,52 +108,79 @@ onMounted(async () => {
 // 组件卸载时移除监听器
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload);
+  window.removeEventListener('message', handleMessageFromParent);
 });
 
-// 从URL加载模板数据
-async function loadTemplateDataFromDB() {
-  return new Promise((resolve, reject) => {
-    try {
-      // 从URL获取编码的数据
-      const urlHash = window.location.hash; // 例如：#/template-designer?data=xxx
-      const queryString = urlHash.split('?')[1] || '';
-      const urlParams = new URLSearchParams(queryString);
-      const encodedData = urlParams.get('data');
-      
-      if (!encodedData) {
-        console.error('URL中未找到模板数据');
-        reject(new Error('URL中未找到模板数据，请返回上一页重试'));
-        return;
+// 标记是否已接收数据，避免重复处理
+let dataReceived = false;
+
+// 处理来自父页面的消息
+function handleMessageFromParent(event) {
+  try {
+    // 验证消息来源（可选：添加来源验证）
+    // if (event.origin !== window.location.origin) return;
+
+    console.log('收到来自父页面的消息:', event.data);
+
+    // 验证消息类型和数据完整性
+    if (event.data &&
+        event.data.type === 'INIT_TEMPLATE_DATA' &&
+        event.data.data &&
+        !dataReceived) {
+
+      console.log('接收到初始化模板数据');
+      dataReceived = true;
+
+      // 设置模板数据
+      templateData.value = event.data.data;
+
+      // 确保所有必要的字段都存在
+      if (!templateData.value.fields) {
+        console.warn('模板数据中缺少字段信息，使用空数组');
+        templateData.value.fields = [];
       }
-      
-      try {
-        // 解码数据
-        const jsonString = decodeURIComponent(atob(encodedData));
-        templateData.value = JSON.parse(jsonString);
-        console.log('成功从URL解码模板数据');
-        
-        // 确保所有必要的字段都存在
-        if (!templateData.value.fields) {
-          console.warn('模板数据中缺少字段信息，使用空数组');
-          templateData.value.fields = [];
-        }
-        
-        if (!templateData.value.testData) {
-          console.warn('模板数据中缺少测试数据，使用空对象');
-          templateData.value.testData = {};
-        }
-        
-        resolve(templateData.value);
-      } catch (decodeError) {
-        console.error('解码模板数据失败:', decodeError);
-        reject(new Error('解码模板数据失败: ' + (decodeError.message || String(decodeError))));
+
+      if (!templateData.value.testData) {
+        console.warn('模板数据中缺少测试数据，使用空对象');
+        templateData.value.testData = {};
       }
-    } catch (error) {
-      console.error('加载模板数据失败:', error);
-      reject(new Error('加载模板数据失败: ' + (error.message || String(error))));
+
+      if (!templateData.value.recordsData) {
+        console.warn('模板数据中缺少记录数据，使用空数组');
+        templateData.value.recordsData = [];
+      }
+
+      console.log('完整模板数据已接收:', {
+        fieldsCount: templateData.value.fields.length,
+        hasTestData: Object.keys(templateData.value.testData).length > 0,
+        recordsCount: templateData.value.recordsData.length,
+        hasTemplate: !!templateData.value.template
+      });
+
+      // 更新加载状态
+      message.value = '正在初始化设计器...';
+
+      // 初始化打印组件
+      initHiprint().then(() => {
+        isLoading.value = false;
+        message.value = '';
+        ElMessage.success('设计器已准备就绪，完整数据加载成功');
+      }).catch((error) => {
+        console.error('初始化打印组件失败:', error);
+        message.value = '初始化打印组件失败: ' + (error.message || String(error));
+        isLoading.value = false;
+      });
+    } else if (event.data && event.data.type === 'INIT_TEMPLATE_DATA' && dataReceived) {
+      console.log('数据已接收，跳过重复处理');
     }
-  });
+  } catch (error) {
+    console.error('处理父页面消息失败:', error);
+    ElMessage.error('处理数据失败: ' + (error.message || String(error)));
+    isLoading.value = false;
+  }
 }
+
+
 
 // 初始化打印组件
 async function initHiprint() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick, watch, markRaw } from 'vue';
 import { bitable } from '@lark-base-open/js-sdk';
 import { hiprint, defaultElementTypeProvider } from "vue-plugin-hiprint";
 // @ts-ignore
@@ -59,10 +59,10 @@ const templateName = ref('');
 
 // 标签页配置
 const tabs = ref([
-  { name: 'design', label: '设计模板', icon: Edit, emoji: '🎨' },
-  { name: 'print', label: '数据打印', icon: Printer, emoji: '🖨️' },
-  { name: 'template-manager', label: '模板管理', icon: FolderOpened, emoji: '📁' },
-  { name: 'field-info', label: '字段信息', icon: DataBoard, emoji: '📊' }
+  { name: 'design', label: '设计模板', icon: markRaw(Edit), emoji: '🎨' },
+  { name: 'print', label: '数据打印', icon: markRaw(Printer), emoji: '🖨️' },
+  { name: 'template-manager', label: '模板管理', icon: markRaw(FolderOpened), emoji: '📁' },
+  { name: 'field-info', label: '字段信息', icon: markRaw(DataBoard), emoji: '📊' }
 ]);
 
 // 监听标签页切换，重新渲染hiprint组件
@@ -590,80 +590,98 @@ function goToTemplateDesigner() {
   try {
     // 获取当前模板数据
     const currentTemplate = hiprintTemplate ? hiprintTemplate.getJson() : {};
-    
-    // 准备要存储的数据，确保数据可以被序列化
-    // 为了减小数据量，只传递必要的字段信息
-    const fieldsData = JSON.parse(JSON.stringify(fields.value || [])).map(field => ({
-      id: field.id,
-      name: field.name,
-      type: field.type,
-      displayName: field.displayName || field.name
-    }));
-    
-    // 准备测试数据
+
+    // 准备完整的字段数据，不再简化
+    const fieldsData = JSON.parse(JSON.stringify(fields.value || []));
+
+    // 准备完整的测试数据
     const testDataClone = JSON.parse(JSON.stringify(window.fieldTestData || {}));
-    
-    // 准备要传递的数据
+
+    // 准备完整的记录数据
+    const recordsDataClone = JSON.parse(JSON.stringify(recordsData.value || []));
+
+    // 准备要传递的完整数据
     const templateData = {
       template: currentTemplate,
       fields: fieldsData,
-      testData: testDataClone
+      testData: testDataClone,
+      recordsData: recordsDataClone,
+      timestamp: new Date().getTime()
     };
-    
-    // 将数据转换为JSON字符串，然后使用Base64编码
-    const jsonString = JSON.stringify(templateData);
-    
-    try {
-      // 尝试直接将完整数据编码到URL
-      const encodedData = btoa(encodeURIComponent(jsonString));
-      
-      // 检查URL长度，大多数浏览器限制URL长度在2000-8000字符之间
-      const baseUrl = window.location.origin + window.location.pathname + '#/template-designer?data=';
-      const fullUrl = baseUrl + encodedData;
-      
-      if (fullUrl.length > 2000) {
-        throw new Error('URL too long');
-      }
-      
-      // 打开新窗口
-      const newWindow = window.open(fullUrl, '_blank', 'width=1200,height=800');
-      
-      // 如果新窗口被阻止，提示用户
-      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-        ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
-        return;
-      }
-      
-      ElMessage.success('正在打开模板设计器');
-      
-    } catch (urlError) {
-      console.warn('URL数据过大，尝试简化数据:', urlError);
-      
-      // 如果URL太长，简化数据
-      const simplifiedData = {
-        template: currentTemplate,
-        fields: fieldsData.map(f => ({ 
-          id: f.id, 
-          name: f.name,
-          type: f.type 
-        }))
-      };
-      
-      // 重新编码
-      const simplifiedJsonString = JSON.stringify(simplifiedData);
-      const encodedSimplifiedData = btoa(encodeURIComponent(simplifiedJsonString));
-      
-      // 打开新窗口
-      const designerUrl = window.location.origin + window.location.pathname + '#/template-designer?data=' + encodedSimplifiedData;
-      const newWindow = window.open(designerUrl, '_blank', 'width=1200,height=800');
-      
-      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-        ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
-        return;
-      }
-      
-      ElMessage.success('正在打开模板设计器（数据已简化）');
+
+    console.log('准备发送完整数据到独立设计器:', templateData);
+
+    // 直接打开新窗口，不传递URL参数
+    const designerUrl = window.location.origin + window.location.pathname + '#/template-designer';
+    const newWindow = window.open(designerUrl, '_blank', 'width=1200,height=800');
+
+    // 如果新窗口被阻止，提示用户
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      ElMessage.error('弹窗被浏览器阻止，请允许弹窗后重试');
+      return;
     }
+
+    // 标记是否已发送数据，避免重复发送
+    let dataSent = false;
+
+    // 发送数据的函数
+    const sendDataToDesigner = () => {
+      if (dataSent) {
+        console.log('数据已发送，跳过重复发送');
+        return;
+      }
+
+      try {
+        // 检查窗口是否仍然有效
+        if (newWindow.closed) {
+          console.log('目标窗口已关闭，取消发送数据');
+          return;
+        }
+
+        // 发送完整数据到独立设计器
+        newWindow.postMessage({
+          type: 'INIT_TEMPLATE_DATA',
+          data: templateData
+        }, '*');
+
+        dataSent = true;
+        console.log('完整数据已发送到独立设计器');
+        ElMessage.success('模板设计器已打开，完整数据传输成功');
+      } catch (postError) {
+        console.error('发送数据到独立设计器失败:', postError);
+        ElMessage.error('发送数据失败: ' + (postError.message || String(postError)));
+      }
+    };
+
+    // 监听新窗口的加载完成消息
+    const messageListener = (event) => {
+      // 验证消息来源和类型
+      if (event.source === newWindow &&
+          event.data &&
+          event.data.type === 'DESIGNER_READY' &&
+          !dataSent) {
+        console.log('收到独立设计器准备就绪消息');
+        sendDataToDesigner();
+        // 移除监听器
+        window.removeEventListener('message', messageListener);
+        // 清除超时定时器
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
+    };
+
+    window.addEventListener('message', messageListener);
+
+    // 设置超时，如果8秒内没有收到准备就绪消息，直接发送数据
+    const timeoutId = setTimeout(() => {
+      if (!dataSent) {
+        console.log('超时发送数据到独立设计器');
+        sendDataToDesigner();
+      }
+      window.removeEventListener('message', messageListener);
+    }, 8000);
+
   } catch (error) {
     console.error('打开模板设计器失败:', error);
     ElMessage.error('打开模板设计器失败: ' + (error.message || String(error)));
