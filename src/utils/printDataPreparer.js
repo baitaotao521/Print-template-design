@@ -50,8 +50,7 @@ export class PrintDataPreparer {
   prepareSinglePrintData(templateData, options = {}) {
     const {
       includeTableData = true,
-      preferTestData = true,
-      fallbackToSample = true
+      preferTestData = true
     } = options;
 
     this._debug('开始准备单条记录打印数据', { templateData, options });
@@ -72,11 +71,9 @@ export class PrintDataPreparer {
       dataType = DATA_TYPES.RECORD_DATA;
       this._debug('使用第一条记录数据', printData);
     }
-    // 3. 根据字段信息生成示例数据
-    else if (fallbackToSample && templateData.fields && templateData.fields.length > 0) {
-      printData = this._generateSampleData(templateData.fields);
-      dataType = DATA_TYPES.FIELD_SAMPLE;
-      this._debug('生成字段示例数据', printData);
+    // 3. 如果没有数据，使用空对象
+    else {
+      this._debug('没有可用数据，使用空对象');
     }
 
     // 添加表格数据（如果需要）
@@ -158,66 +155,7 @@ export class PrintDataPreparer {
     return recordData;
   }
 
-  /**
-   * 根据字段信息生成示例数据
-   * @param {Array} fields - 字段数组
-   * @returns {Object} 生成的示例数据
-   */
-  _generateSampleData(fields) {
-    const sampleData = {};
 
-    fields.forEach(field => {
-      sampleData[field.id] = this._generateFieldSampleValue(field);
-    });
-
-    return sampleData;
-  }
-
-  /**
-   * 为单个字段生成示例值
-   * @param {Object} field - 字段对象
-   * @returns {any} 示例值
-   */
-  _generateFieldSampleValue(field) {
-    const fieldName = field.name || field.id;
-
-    switch (field.type) {
-      case 1: // 多行文本
-        return `${fieldName}示例文本内容`;
-      case 2: // 数字
-        return 123.45;
-      case 3: // 单选
-        return `${fieldName}选项A`;
-      case 4: // 多选
-        return `${fieldName}选项1, ${fieldName}选项2`;
-      case 5: // 日期
-        return new Date().toLocaleDateString('zh-CN');
-      case 7: // 复选框
-        return true;
-      case 11: // 人员
-        return '示例用户';
-      case 17: // 附件
-        return '示例附件.pdf';
-      case 18: // 单向关联
-        return `关联${fieldName}`;
-      case 19: // 查找引用
-        return `引用${fieldName}值`;
-      case 20: // 公式
-        return `公式计算结果`;
-      case 1001: // 创建时间
-        return new Date().toLocaleString('zh-CN');
-      case 1002: // 修改时间
-        return new Date().toLocaleString('zh-CN');
-      case 1003: // 创建人
-        return '创建者';
-      case 1004: // 修改人
-        return '修改者';
-      case 1005: // 自动编号
-        return 'AUTO-001';
-      default:
-        return `${fieldName}示例值`;
-    }
-  }
 
   /**
    * 准备表格数据
@@ -232,25 +170,15 @@ export class PrintDataPreparer {
         return [templateData.testData];
 
       case DATA_TYPES.RECORD_DATA:
-        // 如果有记录数据，使用所有记录或前几条记录
+        // 如果有记录数据，只使用第一条记录
         if (templateData.recordsData && templateData.recordsData.length > 0) {
-          return templateData.recordsData.slice(0, 10).map(record => 
-            this._extractRecordData(record)
-          );
+          const firstRecord = templateData.recordsData[0];
+          return [this._extractRecordData(firstRecord)];
         }
         return [];
 
       case DATA_TYPES.FIELD_SAMPLE:
-        // 如果是示例数据，生成几行示例表格数据
-        if (templateData.fields && templateData.fields.length > 0) {
-          return Array.from({ length: 3 }, (_, index) => {
-            const rowData = {};
-            templateData.fields.forEach(field => {
-              rowData[field.id] = this._generateFieldSampleValue(field) + (index > 0 ? ` ${index + 1}` : '');
-            });
-            return rowData;
-          });
-        }
+        // 不生成示例数据，返回空数组
         return [];
 
       default:

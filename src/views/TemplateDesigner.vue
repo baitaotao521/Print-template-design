@@ -383,8 +383,7 @@ function printPreview() {
     // 使用工具类准备打印数据
     const printData = preparer.prepareSinglePrintData(templateData.value, {
       includeTableData: true,
-      preferTestData: true,
-      fallbackToSample: true
+      preferTestData: true
     });
 
     // 验证打印数据
@@ -421,8 +420,7 @@ function exportToPDF() {
     // 使用工具类准备打印数据
     const printData = preparer.prepareSinglePrintData(templateData.value, {
       includeTableData: true,
-      preferTestData: true,
-      fallbackToSample: true
+      preferTestData: true
     });
 
     // 验证打印数据

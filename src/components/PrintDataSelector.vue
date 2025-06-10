@@ -793,8 +793,7 @@ function prepareSinglePrintData(row) {
     // 使用工具类准备单条记录的打印数据
     const printData = preparer.prepareSinglePrintData(templateData, {
       includeTableData: true,
-      preferTestData: false, // 优先使用记录数据而不是测试数据
-      fallbackToSample: false
+      preferTestData: false // 优先使用记录数据而不是测试数据
     });
 
     // 验证打印数据
